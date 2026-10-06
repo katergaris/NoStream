@@ -8,7 +8,7 @@ const extractor = require('./src/extractor');
 
 const cfg = config.get();
 
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.3.1';
 
 const app = express();
 app.set('etag', false);
@@ -201,6 +201,18 @@ function addonCors(req, res, next) {
   next();
 }
 
+// Protocollo con cui il client ha raggiunto davvero il server. Dietro un reverse proxy
+// HTTPS (es. `tailscale serve` su https://pve.van-pike.ts.net:4321) a Node arriva HTTP
+// in chiaro: costruendo i link di download con req.protocol uscivano "http://" verso una
+// porta HTTPS, e il proxy rispondeva 400 "Client sent an HTTP request to an HTTPS server".
+function publicProtocol(req) {
+  const forwarded = String(req.get('x-forwarded-proto') || '').split(',')[0].trim().toLowerCase();
+  if (forwarded === 'https' || forwarded === 'http') return forwarded;
+  // tailscale serve espone sempre i nomi *.ts.net in HTTPS
+  if (/\.ts\.net(:\d+)?$/i.test(req.get('host') || '')) return 'https';
+  return req.protocol;
+}
+
 function parseStremioId(id) {
   const [imdbId, season, episode] = id.split(':');
   return { imdbId, season, episode };
@@ -244,7 +256,7 @@ app.get('/stream/:type/:id.json', addonCors, asyncRoute(async (req, res) => {
     // TMDB non configurata/raggiungibile: usa l'id grezzo come titolo del file
   }
 
-  const base = `${req.protocol}://${req.get('host')}`;
+  const base = `${publicProtocol(req)}://${req.get('host')}`;
   const result = downloadable.map(s => {
     const payload = {
       addonName: s.addonName,
