@@ -444,8 +444,15 @@ async function serveHlsJob(job, req, res, { fresh }) {
           pos += n;
           if (!res.write(Buffer.from(buffer.subarray(0, n)))) {
             await new Promise(resolve => {
-              res.once('drain', resolve);
-              res.once('close', resolve);
+              // Entrambi i listener vanno tolti a ogni giro: altrimenti a ogni pausa di
+              // scrittura se ne accumula uno su "close" (MaxListenersExceededWarning).
+              const done = () => {
+                res.off('drain', done);
+                res.off('close', done);
+                resolve();
+              };
+              res.on('drain', done);
+              res.on('close', done);
             });
           }
           continue;

@@ -8,7 +8,7 @@ const extractor = require('./src/extractor');
 
 const cfg = config.get();
 
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.6.1';
 
 const app = express();
 app.set('etag', false);
