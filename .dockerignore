@@ -1,0 +1,6 @@
+# Configurazione personale (API key, addon): non deve mai finire nell'immagine
+config.json
+psw
+*.log
+.git
+node_modules
