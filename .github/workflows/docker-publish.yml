@@ -20,6 +20,7 @@ jobs:
 
       - name: Nome immagine (minuscolo, richiesto da Docker)
         id: image
+        # Nome immagine storico (precedente al rinomino in NoStream): usato dal compose su ZimaOS.
         run: echo "name=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/nuviodl" >> "$GITHUB_OUTPUT"
 
       - name: Login su GitHub Container Registry

@@ -171,7 +171,7 @@ async function streamDirect(sourceUrl, headers, filename, req, res) {
 // mentre cresce. A conversione finita il file si serve come un normale file con dimensione
 // e Range, quindi Nuvio mostra anche la percentuale.
 
-const HLS_CACHE_DIR = path.join(os.tmpdir(), 'nuviodl-hls');
+const HLS_CACHE_DIR = path.join(os.tmpdir(), 'nostream-hls');
 // Lavoro non ancora finito e senza nessun client collegato da questo tempo: abbandonato.
 const HLS_ORPHAN_MS = 10 * 60 * 1000;
 // File convertito consegnato per intero al telefono: si cancella dopo questo margine (per

@@ -1,7 +1,7 @@
 services:
-  nuvio-offline:
+  nostream:
     build: .
-    container_name: nuvio-offline
+    container_name: nostream
     restart: unless-stopped
     ports:
       - "4321:4321"
