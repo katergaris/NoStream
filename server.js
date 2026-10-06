@@ -8,7 +8,7 @@ const extractor = require('./src/extractor');
 
 const cfg = config.get();
 
-const APP_VERSION = '1.5.1';
+const APP_VERSION = '1.6.0';
 
 const app = express();
 app.set('etag', false);
@@ -190,16 +190,18 @@ app.get('/api/download', asyncRoute(async (req, res) => {
   await handleDownload(req.query.data, req, res);
 }));
 
-// ---- Stremio/Nuvio addon (nuvio-offline installata come addon dentro Nuvio) ----
+// ---- Stremio/Nuvio addon (NoStream installato come addon dentro Nuvio) ----
 //
 // Espone questo stesso server come addon: quando Nuvio interroga /stream/:type/:id.json,
-// nuvio-offline ri-interroga gli addon "sorgente" configurati (stessa logica di
+// NoStream ri-interroga gli addon "sorgente" configurati (stessa logica di
 // /api/streams), tiene solo gli stream scaricabili e li restituisce come voci con `url`
 // puntato a /api/download/... — un link che si comporta come un normale file video diretto
 // (risponde con Content-Type/Content-Length/Content-Disposition validi una volta pronto),
 // così il download nativo di Nuvio lo riconosce e lo scarica da solo sul device, senza
 // passare dal browser esterno.
 
+// ID storico, da non cambiare: Nuvio riconosce l'addon da qui, e con un ID nuovo
+// andrebbe reinstallato su ogni dispositivo.
 const ADDON_ID = 'org.nuvio-offline';
 
 function addonCors(req, res, next) {
@@ -219,7 +221,7 @@ function publicProtocol(req) {
   return req.protocol;
 }
 
-// "direct" = file video che NuvioDL inoltra così com'è (con dimensione e Range);
+// "direct" = file video che NoStream inoltra così com'è (con dimensione e Range);
 // "hls" = playlist .m3u8 da convertire con ffmpeg. Per gli stream con solo externalUrl
 // il tipo si conosce solo dopo la risoluzione: gx (MixDrop) dà sempre un .mp4 diretto,
 // gli altri provider (css, dd, sp3, voe) una playlist HLS.
@@ -269,8 +271,8 @@ app.get('/manifest.json', addonCors, (req, res) => {
   res.json({
     id: ADDON_ID,
     version: '1.0.0',
-    name: 'Nuvio Offline',
-    description: 'Scarica sul dispositivo i contenuti trovati dagli addon configurati in nuvio-offline',
+    name: 'NoStream',
+    description: 'Scarica sul dispositivo i contenuti trovati dagli addon configurati in NoStream',
     resources: ['stream'],
     types: ['movie', 'series'],
     idPrefixes: ['tt'],
@@ -377,7 +379,7 @@ app.use((err, req, res, next) => {
 });
 
 const httpServer = app.listen(cfg.port, () => {
-  console.log(`nuvio-offline v${APP_VERSION} in ascolto su http://localhost:${cfg.port}`);
+  console.log(`NoStream v${APP_VERSION} in ascolto su http://localhost:${cfg.port}`);
 });
 
 // Node tronca da solo una richiesta che impiega troppo a ricevere risposta completa

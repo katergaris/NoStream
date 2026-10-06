@@ -1,4 +1,8 @@
-# nuvio-offline
+# NoStream
+
+> Scarica invece di streamare. Già noto come NuvioDL / nuvio-offline: per compatibilità
+> restano invariati il nome dell'immagine Docker (`ghcr.io/katergaris/nuviodl`) e l'ID
+> dell'addon (`org.nuvio-offline`).
 
 Web app self-hosted (Node.js/Express) per scaricare offline contenuti video trovati tramite
 addon Stremio/Nuvio, così da poterli guardare senza connessione (es. in aereo).
@@ -9,7 +13,7 @@ addon Stremio/Nuvio, così da poterli guardare senza connessione (es. in aereo).
 
 ## Come funziona il download
 
-nuvio-offline **non accumula mai file in modo permanente sul server**. Quando premi
+NoStream **non accumula mai file in modo permanente sul server**. Quando premi
 "Scarica sul dispositivo":
 
 - se lo stream è un **file diretto** (mp4/mkv/ecc.), il server fa da semplice proxy: apre
@@ -35,7 +39,7 @@ Il download parte subito in entrambi i casi.
 
 > Nota tecnica: un addon Stremio/Nuvio è solo un endpoint che risponde con JSON
 > (catalogo/stream) — non può in alcun modo comandare all'app Nuvio di scaricare file sul
-> dispositivo. Per questo nuvio-offline resta una web app separata: la apri dal browser
+> dispositivo. Per questo NoStream resta una web app separata: la apri dal browser
 > dello stesso device dove usi Nuvio, e il download finisce lì.
 
 ## Funzionalità
@@ -104,16 +108,16 @@ scaricati (non vengono mai scritti su disco): il `docker-compose.yml` monta solo
 
 ## Installazione come addon dentro Nuvio
 
-Oltre alla sua web UI, nuvio-offline si espone anche come **addon Stremio/Nuvio**
+Oltre alla sua web UI, NoStream si espone anche come **addon Stremio/Nuvio**
 (`/manifest.json` + `/stream/:type/:id.json`). Installandolo dentro Nuvio, quando cerchi
 un film/serie compare, insieme agli stream normali, una voce "⬇️ Scarica offline" per
-ogni stream scaricabile trovato dagli addon "sorgente" già configurati in nuvio-offline —
+ogni stream scaricabile trovato dagli addon "sorgente" già configurati in NoStream —
 niente più bisogno di cercare separatamente nella web UI.
 
 1. In Nuvio, vai nelle impostazioni addon e aggiungi come URL manifest:
    `http://<ip-o-host-della-rpi>:4321/manifest.json`
 2. Cerca un titolo in Nuvio come al solito: tra gli stream trovati vedrai anche le voci
-   "⬇️ Scarica offline" prodotte da nuvio-offline.
+   "⬇️ Scarica offline" prodotte da NoStream.
 3. Selezionandone una, l'addon espone un `url` che punta a `/api/download/...`: dal punto
    di vista di Nuvio è un normale link video diretto (risponde con Content-Type/
    Content-Length/Content-Disposition validi una volta pronto), quindi il **download
@@ -170,7 +174,7 @@ nella lista degli stream.
   Nuvio su Android) non permette di navigare in un MKV senza indice.
 - Stream con solo `infoHash` (torrent) non sono gestiti: servirebbe un client BitTorrent,
   fuori dallo scope di questo tool.
-- Devi aprire nuvio-offline dal **browser dello stesso dispositivo** su cui vuoi che il
+- Devi aprire NoStream dal **browser dello stesso dispositivo** su cui vuoi che il
   file scaricato finisca (es. il telefono/tablet dove usi Nuvio).
 
 ## Struttura del progetto

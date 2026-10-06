@@ -1,5 +1,5 @@
 {
-  "name": "nuvio-offline",
+  "name": "nostream",
   "version": "1.0.0",
   "description": "Web app self-hosted per scaricare offline contenuti trovati tramite addon Stremio/Nuvio",
   "type": "commonjs",
