@@ -8,7 +8,7 @@ const extractor = require('./src/extractor');
 
 const cfg = config.get();
 
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 
 const app = express();
 app.set('etag', false);
@@ -140,7 +140,7 @@ function encodeDownloadPayload(payload) {
   return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
 }
 
-async function handleDownload(rawData, res) {
+async function handleDownload(rawData, req, res) {
   let params;
   try {
     params = decodeDownloadPayload(rawData);
@@ -168,20 +168,20 @@ async function handleDownload(rawData, res) {
     return res.status(e.status || 400).json({ error: e.message });
   }
 
-  await streamer.streamDownload(prepared, res);
+  await streamer.streamDownload(prepared, req, res);
 }
 
-// Formato con estensione nel path (es. /api/download/<dati>/Titolo.mkv): alcune app,
+// Formato con estensione nel path (es. /api/download/<dati>/Titolo.ts): alcune app,
 // incluso il download nativo di Nuvio, decidono se un link è "un file diretto scaricabile"
 // guardando l'estensione nell'URL — un endpoint puramente query-string come
 // /api/download?data=... non ne ha nessuna e viene scartato. Il segmento finale è solo
 // cosmetico: il nome file vero per l'header Content-Disposition è ricalcolato lato server.
 app.get('/api/download/:data/:filename', asyncRoute(async (req, res) => {
-  await handleDownload(req.params.data, res);
+  await handleDownload(req.params.data, req, res);
 }));
 
 app.get('/api/download', asyncRoute(async (req, res) => {
-  await handleDownload(req.query.data, res);
+  await handleDownload(req.query.data, req, res);
 }));
 
 // ---- Stremio/Nuvio addon (nuvio-offline installata come addon dentro Nuvio) ----
@@ -254,11 +254,12 @@ app.get('/stream/:type/:id.json', addonCors, asyncRoute(async (req, res) => {
       streamTitle: s.title,
       title: label
     };
-    // Per gli stream con solo externalUrl non conosciamo ancora il tipo: si risolvono
-    // in un .m3u8 (remux -> .mkv) nella quasi totalità dei casi.
+    // Nuvio dà al file scaricato l'estensione che trova in questo URL. Per gli stream con
+    // solo externalUrl non conosciamo ancora il tipo: gx (MixDrop) si risolve in un .mp4
+    // diretto, gli altri provider in un .m3u8 (remux -> .ts) nella quasi totalità dei casi.
     const ext = s.url
-      ? (streamer.detectType(s.url) === 'hls' ? '.mkv' : streamer.guessExtension(s.url))
-      : '.mkv';
+      ? (streamer.detectType(s.url) === 'hls' ? '.ts' : streamer.guessExtension(s.url))
+      : (extractor.providerFromUrl(s.externalUrl) === 'gx' ? '.mp4' : '.ts');
     const cosmeticFilename = encodeURIComponent(`${label}${ext}`);
     const downloadUrl = `${base}/api/download/${encodeDownloadPayload(payload)}/${cosmeticFilename}`;
     return {

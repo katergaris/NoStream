@@ -496,4 +496,8 @@ async function resolveExternalUrl(externalUrl) {
   return fn(p);
 }
 
-module.exports = { resolveExternalUrl, providerFromUrl };
+function isProviderSupported(externalUrl) {
+  return Object.prototype.hasOwnProperty.call(EXTRACTORS, providerFromUrl(externalUrl));
+}
+
+module.exports = { resolveExternalUrl, providerFromUrl, isProviderSupported };

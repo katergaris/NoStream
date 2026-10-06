@@ -3,6 +3,7 @@ const IMAGE_BASE = 'https://image.tmdb.org/t/p/w200';
 const FETCH_TIMEOUT_MS = 30000;
 
 const config = require('./config');
+const extractor = require('./extractor');
 
 function addonTimeoutMs() {
   const t = parseInt(config.get().addonTimeoutMs, 10);
@@ -115,8 +116,12 @@ function addonBaseUrl(manifestUrl) {
 function isSupportedStream(s) {
   // Supporta sia gli stream con `url` diretto (mp4/mkv/m3u8) sia quelli che
   // espongono solo un `externalUrl` (addon "scraper" tipo Toastflix), risolvibile
-  // lato server da src/extractor.js. Restano esclusi i torrent (solo infoHash).
-  return (!!s.url || !!s.externalUrl) && !/^magnet:/i.test(s.url || '');
+  // lato server da src/extractor.js. Restano esclusi i torrent (solo infoHash) e gli
+  // externalUrl di provider che l'extractor non sa risolvere (es. v12): mostrarli in
+  // Nuvio produrrebbe solo download destinati a fallire con 501.
+  if (/^magnet:/i.test(s.url || '')) return false;
+  if (s.url) return true;
+  return !!s.externalUrl && extractor.isProviderSupported(s.externalUrl);
 }
 
 async function queryAddonStreams(addon, stremioType, stremioId) {
