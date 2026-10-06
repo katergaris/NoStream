@@ -1,9 +1,11 @@
 services:
   nostream:
-    build: .
+    image: ghcr.io/katergaris/nuviodl:latest
+    # build: .   # decommenta (e usa "docker compose up -d --build") per compilare dal sorgente
     container_name: nostream
     restart: unless-stopped
     ports:
       - "4321:4321"
     volumes:
+      # deve essere un FILE già esistente (cp config.example.json config.json)
       - ./config.json:/app/config.json
