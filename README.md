@@ -14,17 +14,18 @@ nuvio-offline **non accumula mai file in modo permanente sul server**. Quando pr
 
 - se lo stream è un **file diretto** (mp4/mkv/ecc.), il server fa da semplice proxy: apre
   la connessione allo stream e ne inoltra i byte al tuo browser mano a mano che arrivano,
-  senza mai scriverli su disco;
-- se lo stream è **HLS (.m3u8)**, il server avvia `ffmpeg -c copy` (remux, nessuna
-  ricodifica) scrivendo su un **file temporaneo** (scrivere direttamente su pipe/stdout si
-  è rivelato inaffidabile con alcuni addon, producendo download troncati); a remux
-  completato il file viene inoltrato al browser e **cancellato subito dopo**.
+  senza mai scriverli su disco. L'header `Range` viene inoltrato alla fonte, quindi un
+  download interrotto riprende da dove si era fermato;
+- se lo stream è **HLS (.m3u8)**, il server sceglie la variante a qualità più alta e
+  avvia ffmpeg (video copiato, audio ricodificato in AAC) con uscita **MPEG-TS (.ts)**
+  inoltrata al client mano a mano che viene prodotta. Ogni richiesta di ffmpeg ha un
+  timeout di 15s con riconnessione e fino a 10 tentativi per segmento, perché alcuni CDN
+  (es. vixsrc) lasciano ogni tanto connessioni appese.
 
 In entrambi i casi la risposta HTTP arriva con `Content-Disposition: attachment`, quindi è
 il **browser del dispositivo da cui hai aperto la pagina** (es. il telefono/tablet dove usi
 Nuvio) a salvare il file nella sua cartella Download tramite il download manager nativo.
-Per l'HLS, il download nel browser parte solo a remux completato (per un film intero può
-volerci qualche minuto di attesa prima che compaia); per i file diretti parte subito.
+Il download parte subito in entrambi i casi.
 
 > Nota tecnica: un addon Stremio/Nuvio è solo un endpoint che risponde con JSON
 > (catalogo/stream) — non può in alcun modo comandare all'app Nuvio di scaricare file sul
@@ -113,11 +114,11 @@ niente più bisogno di cercare separatamente nella web UI.
    nativo di Nuvio** dovrebbe riconoscerlo e scaricarlo da solo sul device, senza passare
    dal browser esterno.
 
-> Il link ha un'estensione (`.mp4`/`.mkv`) nel percorso apposta: alcune app, incluso
-> probabilmente Nuvio, decidono se un link è "un file diretto scaricabile" guardando
-> l'estensione nell'URL. Per l'HLS, il link risponde solo a remux completato sul
-> server — per un film intero il download nativo potrebbe restare "in attesa" per
-> qualche minuto prima di iniziare a ricevere dati.
+> Il link ha un'estensione (`.mp4`/`.ts`) nel percorso apposta: Nuvio rifiuta i link
+> `.m3u8` e dà al file scaricato l'estensione che trova nell'URL. Se il remux HLS
+> fallisce a metà, il server interrompe la connessione invece di chiuderla normalmente,
+> così Nuvio segna il download come fallito (e si può riprovare) invece di salvare un
+> file troncato come completato.
 
 ## Note su header/proxy degli stream
 
@@ -138,14 +139,12 @@ nella lista degli stream.
   su Nginx/Traefik, o un tunnel tipo Tailscale).
 - **Per i file diretti il progresso è quello nativo del browser** (nessuna barra di
   avanzamento nell'app): il file passa in streaming dal server senza fermarsi, è il
-  download manager del dispositivo a mostrare l'avanzamento. **Per l'HLS**, invece, il
-  browser resta in attesa (senza mostrare nulla) finché ffmpeg non ha finito tutto il
-  remux sul server, poi il download del file completo parte in un colpo solo — per un
-  film intero può volerci qualche minuto prima che compaia.
-- Se un file diretto fallisce **dopo** che il download è già iniziato (es. connessione
-  persa a metà), il browser mostrerà un download interrotto/incompleto: va riavviato.
+  download manager del dispositivo a mostrare l'avanzamento. **Per l'HLS** la dimensione
+  totale non è nota in anticipo, quindi si vedono i byte ricevuti ma non la percentuale.
+- Se un download HLS si interrompe, la ripresa riparte da zero (il remux non è
+  riprendibile a metà); per i file diretti riprende dal punto raggiunto.
 - Se la sorgente non risponde entro **30 secondi** (host lento/irraggiungibile) o smette
-  di produrre dati per **30 secondi consecutivi** durante il remux HLS (stream vuoto,
+  di produrre dati per **60 secondi consecutivi** durante il remux HLS (stream vuoto,
   sessione scaduta, relay che risponde ma senza contenuto reale), il download viene
   interrotto con un errore leggibile invece di restare bloccato o produrre un file
   inutile di poche centinaia di byte.
@@ -159,8 +158,10 @@ nella lista degli stream.
   Per l'HLS via ffmpeg questo fallback non è applicabile (Android/Chrome non riproduce
   `.m3u8` nativamente), quindi se un CDN blocca per IP anche gli stream HLS non c'è
   attualmente un workaround.
-- Il remux HLS con `-c copy` funziona quando i codec sorgente sono compatibili con il
-  container di output (`.mkv`, scelto per la sua tolleranza sui codec).
+- Il remux HLS copia il video così com'è: funziona con i codec supportati da MPEG-TS
+  (H.264/H.265, cioè la quasi totalità degli stream HLS). L'uscita è `.ts` e non `.mkv`
+  perché su una pipe ffmpeg non può scrivere l'indice del MKV, e ExoPlayer (il player di
+  Nuvio su Android) non permette di navigare in un MKV senza indice.
 - Stream con solo `infoHash` (torrent) non sono gestiti: servirebbe un client BitTorrent,
   fuori dallo scope di questo tool.
 - Devi aprire nuvio-offline dal **browser dello stesso dispositivo** su cui vuoi che il
@@ -172,7 +173,7 @@ nella lista degli stream.
 server.js           # route Express
 src/config.js         # caricamento/scrittura config.json
 src/addons.js          # ricerca TMDB + query addon stream Stremio
-src/streamer.js        # streaming diretto del download (proxy HTTP / remux ffmpeg su file temporaneo)
+src/streamer.js        # streaming diretto del download (proxy HTTP con Range / remux ffmpeg -> MPEG-TS)
 public/                # frontend statico (HTML/CSS/JS vanilla)
 ```
 
