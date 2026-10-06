@@ -35,6 +35,7 @@ Funziona in due modi:
 - [Aggiornamento](#aggiornamento)
 - [Limiti noti](#limiti-noti)
 - [Per sviluppatori](#per-sviluppatori)
+- [Licenza](#licenza)
 
 ---
 
@@ -324,3 +325,10 @@ provider che smettono di funzionare. Per provare in locale:
 ```bash
 CONFIG_PATH=./config.json node server.js
 ```
+
+---
+
+## Licenza
+
+[MIT](LICENSE) © 2026 katergaris. Il software è fornito "così com'è", senza garanzie:
+chi lo installa è responsabile dell'uso che ne fa e dei contenuti che scarica.
