@@ -305,7 +305,7 @@ app.get('/stream/:type/:id.json', addonCors, asyncRoute(async (req, res) => {
     // TMDB non configurata/raggiungibile: usa l'id grezzo come titolo del file
   }
 
-  // Lo stesso link può arrivare da più addon (es. più installazioni di Toastflix):
+  // Lo stesso link può arrivare da più addon (es. più installazioni dello stesso addon):
   // ne teniamo uno solo, con i nomi di tutti gli addon che lo hanno proposto.
   const unique = new Map();
   for (const s of downloadable) {

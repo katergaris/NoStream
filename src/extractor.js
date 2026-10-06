@@ -1,6 +1,6 @@
 // src/extractor.js
 //
-// Risolve i link `externalUrl` degli addon Stremio di tipo "scraper" (es. Toastflix)
+// Risolve i link `externalUrl` degli addon Stremio di tipo "scraper"
 // nel vero URL dello stream (.m3u8 / .mp4), replicando lato server la logica
 // dell'extractor — senza browser e senza il proxy locale di Stremio (127.0.0.1:11470),
 // che l'extractor originale usa solo per ragioni CORS/mixed-content lato WebView.

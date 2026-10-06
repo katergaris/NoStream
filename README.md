@@ -43,7 +43,7 @@ Funziona in due modi:
 ```
  Nuvio (telefono)                 NoStream (tuo server)                 Addon sorgente
  ────────────────                 ─────────────────────                 ──────────────
- cerca un titolo  ── /stream ──▶  interroga in parallelo  ── /stream ──▶ Toastflix, ...
+ cerca un titolo  ── /stream ──▶  interroga in parallelo  ── /stream ──▶ addon Stremio
                                   gli addon configurati    ◀── stream ──
                   ◀── voci ⬇️/🔄 ─  (deduplica, ordina,
                                     legge le dimensioni)
@@ -95,7 +95,7 @@ in un MKV senza indice; in un `.ts` invece sì.
 
 ### Provider "scraper" supportati
 
-Alcuni addon (es. Toastflix) non danno un URL di stream ma una pagina di "extractor"
+Alcuni addon "scraper" non danno un URL di stream ma una pagina di "extractor"
 (`externalUrl`). NoStream la risolve lato server per questi provider:
 
 | Provider | Sito | Risultato |
