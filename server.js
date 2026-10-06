@@ -8,7 +8,7 @@ const extractor = require('./src/extractor');
 
 const cfg = config.get();
 
-const APP_VERSION = '1.3.1';
+const APP_VERSION = '1.4.0';
 
 const app = express();
 app.set('etag', false);
@@ -213,6 +213,47 @@ function publicProtocol(req) {
   return req.protocol;
 }
 
+// "direct" = file video che NuvioDL inoltra così com'è (con dimensione e Range);
+// "hls" = playlist .m3u8 da convertire con ffmpeg. Per gli stream con solo externalUrl
+// il tipo si conosce solo dopo la risoluzione: gx (MixDrop) dà sempre un .mp4 diretto,
+// gli altri provider (css, dd, sp3, voe) una playlist HLS.
+const DIRECT_PROVIDERS = new Set(['gx']);
+function streamKind(s) {
+  if (s.url) return streamer.detectType(s.url) === 'hls' ? 'hls' : 'direct';
+  return DIRECT_PROVIDERS.has(extractor.providerFromUrl(s.externalUrl)) ? 'direct' : 'hls';
+}
+
+const SIZE_PROBE_TIMEOUT_MS = 8000;
+
+// Dimensione del file diretto (in byte) chiedendo alla fonte il solo primo byte; null se la
+// fonte non risponde in tempo o non la dichiara. Non blocca mai la risposta oltre il timeout.
+async function probeDirectSize(s) {
+  const probe = (async () => {
+    let sourceUrl = s.url;
+    let headers = s.headers || {};
+    if (!sourceUrl) {
+      const resolved = await extractor.resolveExternalUrl(s.externalUrl);
+      sourceUrl = resolved.sourceUrl;
+      headers = { ...headers, ...(resolved.headers || {}) };
+    }
+    const r = await fetch(sourceUrl, {
+      headers: { ...headers, Range: 'bytes=0-0' },
+      signal: AbortSignal.timeout(SIZE_PROBE_TIMEOUT_MS)
+    });
+    if (r.body) r.body.cancel().catch(() => {});
+    const total = (r.headers.get('content-range') || '').split('/')[1];
+    const size = parseInt(total || (r.status === 200 ? r.headers.get('content-length') : ''), 10);
+    return r.ok && Number.isFinite(size) && size > 0 ? size : null;
+  })();
+  const timeout = new Promise(resolve => setTimeout(() => resolve(null), SIZE_PROBE_TIMEOUT_MS));
+  return Promise.race([probe.catch(() => null), timeout]);
+}
+
+function formatSize(bytes) {
+  const gb = bytes / 1024 ** 3;
+  return gb >= 1 ? `${gb.toFixed(1)} GB` : `${Math.round(bytes / 1024 ** 2)} MB`;
+}
+
 function parseStremioId(id) {
   const [imdbId, season, episode] = id.split(':');
   return { imdbId, season, episode };
@@ -256,8 +297,34 @@ app.get('/stream/:type/:id.json', addonCors, asyncRoute(async (req, res) => {
     // TMDB non configurata/raggiungibile: usa l'id grezzo come titolo del file
   }
 
+  // Lo stesso link può arrivare da più addon (es. più installazioni di Toastflix):
+  // ne teniamo uno solo, con i nomi di tutti gli addon che lo hanno proposto.
+  const unique = new Map();
+  for (const s of downloadable) {
+    const key = s.url || s.externalUrl;
+    const existing = unique.get(key);
+    if (existing) {
+      if (!existing.addonNames.includes(s.addonName)) existing.addonNames.push(s.addonName);
+    } else {
+      unique.set(key, { ...s, addonNames: [s.addonName], kind: streamKind(s) });
+    }
+  }
+  const entries = [...unique.values()];
+
+  // Per i file diretti chiediamo subito la dimensione alla fonte: Nuvio la mostra come
+  // badge (behaviorHints.videoSize) e conferma che il link è davvero scaricabile.
+  await Promise.all(entries.filter(e => e.kind === 'direct').map(async e => {
+    e.size = await probeDirectSize(e);
+  }));
+
+  // File diretti prima (scaricano a velocità piena, con dimensione e ripresa), poi gli HLS
+  // (conversione al volo, senza dimensione). Tra i diretti, quelli con dimensione nota
+  // davanti; l'ordine originale degli addon resta come criterio finale.
+  const rank = e => (e.kind === 'direct' ? (e.size ? 0 : 1) : 2);
+  entries.sort((a, b) => rank(a) - rank(b));
+
   const base = `${publicProtocol(req)}://${req.get('host')}`;
-  const result = downloadable.map(s => {
+  const result = entries.map(s => {
     const payload = {
       addonName: s.addonName,
       sourceUrl: s.url || undefined,
@@ -266,19 +333,25 @@ app.get('/stream/:type/:id.json', addonCors, asyncRoute(async (req, res) => {
       streamTitle: s.title,
       title: label
     };
-    // Nuvio dà al file scaricato l'estensione che trova in questo URL. Per gli stream con
-    // solo externalUrl non conosciamo ancora il tipo: gx (MixDrop) si risolve in un .mp4
-    // diretto, gli altri provider in un .m3u8 (remux -> .ts) nella quasi totalità dei casi.
-    const ext = s.url
-      ? (streamer.detectType(s.url) === 'hls' ? '.ts' : streamer.guessExtension(s.url))
-      : (extractor.providerFromUrl(s.externalUrl) === 'gx' ? '.mp4' : '.ts');
+    // Nuvio dà al file scaricato l'estensione che trova in questo URL.
+    const ext = s.kind === 'direct'
+      ? (s.url ? streamer.guessExtension(s.url) : '.mp4')
+      : '.ts';
     const cosmeticFilename = encodeURIComponent(`${label}${ext}`);
     const downloadUrl = `${base}/api/download/${encodeDownloadPayload(payload)}/${cosmeticFilename}`;
+    const provider = s.externalUrl ? extractor.providerFromUrl(s.externalUrl) : null;
+    const details = s.kind === 'direct'
+      ? `File diretto${s.size ? ` · ${formatSize(s.size)}` : ''} · download a velocità piena, riprendibile`
+      : 'HLS · convertito al volo: niente dimensione, più lento, se si interrompe riparte da zero';
+    const hints = { filename: `${label}${ext}` };
+    if (s.size) hints.videoSize = s.size;
     return {
-      name: '⬇️ Scarica offline',
-      title: `${s.title}\n${s.addonName}`,
+      // Il "name" è anche il criterio con cui Nuvio ordina gli stream di un addon:
+      // "⬇️" viene prima di "🔄", così i file diretti restano in cima in ogni caso.
+      name: s.kind === 'direct' ? '⬇️ Scaricabile' : '🔄 Da convertire',
+      title: [details, s.title, `${s.addonNames.join(', ')}${provider ? ` · ${provider}` : ''}`].join('\n'),
       url: downloadUrl,
-      behaviorHints: { filename: `${label}${ext}` }
+      behaviorHints: hints
     };
   });
 
