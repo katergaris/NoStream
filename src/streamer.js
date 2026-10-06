@@ -1,3 +1,6 @@
+const crypto = require('crypto');
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { spawn, spawnSync } = require('child_process');
 const { pipeline } = require('stream/promises');
@@ -6,8 +9,8 @@ const { Readable } = require('stream');
 const config = require('./config');
 
 const FIRST_BYTE_TIMEOUT_MS = 30000;
-// Il download nativo di Nuvio (OkHttp, readTimeout 60s) abbandona da solo dopo 60s senza
-// byte: oltre questa soglia non ha senso tenere vivo ffmpeg.
+// ffmpeg che non scrive più nulla per questo tempo (nonostante timeout e nuovi tentativi
+// sui segmenti) viene considerato bloccato e la conversione fallita.
 const STALL_TIMEOUT_MS = 60000;
 // Timeout di lettura per ogni richiesta HTTP di ffmpeg (playlist, chiave, segmenti), in
 // microsecondi. Senza, ffmpeg resta appeso per sempre quando il CDN lascia cadere una
@@ -56,18 +59,31 @@ function prepareDownload({ sourceUrl, headers, title, streamTitle }) {
   return { sourceUrl, headers: headers || null, filename: `${baseName}${ext}`, type };
 }
 
-async function streamDownload({ sourceUrl, headers, filename, type }, req, res) {
-  if (active >= (config.get().concurrentDownloads || 1)) {
+async function streamDownload({ sourceUrl, sourceKey, headers, filename, type }, req, res) {
+  const limit = config.get().concurrentDownloads || 1;
+  if (type === 'hls') {
+    // Il limite conta le conversioni ffmpeg in corso, non le connessioni: le riprese di
+    // Nuvio si agganciano a un lavoro esistente e non devono mai ricevere 429.
+    if (runningHlsJobs() >= limit) {
+      res.status(429).json({ error: 'Troppe conversioni in corso, riprova tra poco' });
+      return;
+    }
+    if (!ffmpegAvailable()) {
+      res.status(500).json({ error: 'ffmpeg non è installato o non è nel PATH' });
+      return;
+    }
+    const job = startHlsJob(sourceKey || sourceUrl, sourceUrl, headers, filename);
+    await serveHlsJob(job, req, res, { fresh: true });
+    return;
+  }
+
+  if (active >= limit) {
     res.status(429).json({ error: 'Troppi download in corso, riprova tra poco' });
     return;
   }
   active++;
   try {
-    if (type === 'hls') {
-      await streamHls(sourceUrl, headers, filename, res);
-    } else {
-      await streamDirect(sourceUrl, headers, filename, req, res);
-    }
+    await streamDirect(sourceUrl, headers, filename, req, res);
   } finally {
     active--;
   }
@@ -142,6 +158,79 @@ async function streamDirect(sourceUrl, headers, filename, req, res) {
   }
 }
 
+// ---------------------------------------------------------------
+// HLS: conversione su disco, indipendente dalla connessione del client
+// ---------------------------------------------------------------
+//
+// Su Android 14+ Nuvio chiude e riapre la connessione del download a ogni cambio di rete
+// (JobService.onNetworkChanged), chiedendo i byte mancanti con "Range: bytes=N-". Se la
+// conversione fosse legata alla connessione, ogni riapertura ripartirebbe da zero (download
+// che arriva a 1 MB, torna a 0, arriva a 5 MB, torna a 0...).
+// Per questo ogni stream HLS diventa un "lavoro": ffmpeg scrive un .ts su disco a velocità
+// piena, e ogni richiesta (prima o ripresa) legge il file dal byte richiesto, seguendolo
+// mentre cresce. A conversione finita il file si serve come un normale file con dimensione
+// e Range, quindi Nuvio mostra anche la percentuale.
+
+const HLS_CACHE_DIR = path.join(os.tmpdir(), 'nuviodl-hls');
+// Lavoro non ancora finito e senza nessun client collegato da questo tempo: abbandonato.
+const HLS_ORPHAN_MS = 10 * 60 * 1000;
+// File convertito consegnato per intero al telefono: si cancella dopo questo margine (per
+// un'eventuale ultima riconnessione di Nuvio proprio sul finale).
+const HLS_DELIVERED_GRACE_MS = 2 * 60 * 1000;
+// Rete di sicurezza per i download lasciati a metà: file cancellato dopo questo tempo
+// dall'ultimo accesso anche se il telefono non l'ha mai ricevuto tutto.
+const HLS_KEEP_MS = 6 * 60 * 60 * 1000;
+const TAIL_POLL_MS = 500;
+const TAIL_CHUNK_BYTES = 256 * 1024;
+// "Content-Range" di una ripresa mentre la conversione è in corso: la fine non è ancora
+// nota, ma il parser di Nuvio vuole comunque un numero ("bytes N-M/*"). Con totale "*"
+// Nuvio non controlla la lunghezza e legge fino alla chiusura della connessione.
+const OPEN_ENDED_RANGE_SPAN = 1e15;
+
+const hlsJobs = new Map();
+
+fs.rmSync(HLS_CACHE_DIR, { recursive: true, force: true });
+fs.mkdirSync(HLS_CACHE_DIR, { recursive: true });
+
+setInterval(() => {
+  const now = Date.now();
+  for (const job of hlsJobs.values()) {
+    if (job.status === 'running' || job.clients > 0) continue;
+    const idle = now - job.lastAccess;
+    if ((job.delivered && idle > HLS_DELIVERED_GRACE_MS) || idle > HLS_KEEP_MS) {
+      console.log(`HLS rimosso dal disco: ${job.filename}${job.delivered ? ' (consegnato)' : ' (scaduto)'}`);
+      removeHlsJob(job);
+    }
+  }
+}, 30 * 1000).unref();
+
+function removeHlsJob(job) {
+  hlsJobs.delete(job.key);
+  fs.rm(job.file, { force: true }, () => {});
+}
+
+function hlsCacheKey(sourceKey) {
+  return crypto.createHash('sha1').update(String(sourceKey)).digest('hex').slice(0, 24);
+}
+
+// Lavoro HLS già esistente e riutilizzabile per questa sorgente (in corso o finito).
+// Un lavoro fallito viene scartato, così la prossima richiesta ne avvia uno nuovo.
+function getHlsJob(sourceKey) {
+  const job = hlsJobs.get(hlsCacheKey(sourceKey));
+  if (!job) return null;
+  if (job.status === 'failed') {
+    if (job.clients === 0) removeHlsJob(job);
+    return null;
+  }
+  return job;
+}
+
+function runningHlsJobs() {
+  let n = 0;
+  for (const job of hlsJobs.values()) if (job.status === 'running') n++;
+  return n;
+}
+
 let ffmpegOk = null;
 function ffmpegAvailable() {
   if (ffmpegOk === null) {
@@ -181,19 +270,29 @@ async function pickBestVariant(sourceUrl, headers) {
   }
 }
 
-// Remux HLS -> MPEG-TS in streaming: l'output di ffmpeg viene inoltrato al client man mano
-// che viene prodotto, invece di bufferizzare l'intero file su disco prima di rispondere.
-// È necessario perché il download nativo di Nuvio abbandona dopo 60s senza ricevere byte:
-// con un remux "buffer-first" l'intero contenuto restava in attesa per minuti.
-// MPEG-TS e non MKV: su una pipe ffmpeg non può tornare indietro a scrivere l'indice
-// (Cues) del MKV, e ExoPlayer considera un MKV senza indice non navigabile; un .ts si
-// riesce invece a navigare anche senza indice.
-async function streamHls(sourceUrl, headers, filename, res) {
-  if (!ffmpegAvailable()) {
-    res.status(500).json({ error: 'ffmpeg non è installato o non è nel PATH' });
-    return;
-  }
+// Avvia ffmpeg (HLS -> MPEG-TS su file). MPEG-TS e non MKV: il file viene letto mentre è
+// ancora in scrittura, e ExoPlayer riesce a navigare in un .ts anche senza indice.
+function startHlsJob(sourceKey, sourceUrl, headers, filename) {
+  const key = hlsCacheKey(sourceKey);
+  const job = {
+    key,
+    file: path.join(HLS_CACHE_DIR, `${key}.ts`),
+    filename,
+    written: 0,
+    status: 'running',
+    clients: 0,
+    lastAccess: Date.now(),
+    ff: null
+  };
+  hlsJobs.set(key, job);
+  runHlsJob(job, sourceUrl, headers).catch(e => {
+    console.error(`HLS fallito: ${filename} — ${e.message}`);
+    job.status = 'failed';
+  });
+  return job;
+}
 
+async function runHlsJob(job, sourceUrl, headers) {
   const variant = await pickBestVariant(sourceUrl, headers);
 
   const args = ['-hide_banner', '-nostats', '-y'];
@@ -221,38 +320,11 @@ async function streamHls(sourceUrl, headers, filename, res) {
     '-c:a', 'aac',
     '-f', 'mpegts',
     '-flush_packets', '1',
-    'pipe:1'
+    job.file
   );
 
   const ff = spawn('ffmpeg', args);
-
-  // Manda subito gli header: da qui in poi il client vede un download "attivo" con
-  // progresso reale invece di restare appeso in attesa del remux completo.
-  res.setHeader('Content-Type', 'video/mp2t');
-  res.setHeader('Content-Disposition', contentDisposition(filename));
-  res.flushHeaders();
-
-  let bytes = 0;
-  let lastSize = 0;
-  let stalledSince = Date.now();
-  let stalled = false;
-  const stallCheck = setInterval(() => {
-    if (bytes > lastSize) {
-      lastSize = bytes;
-      stalledSince = Date.now();
-    } else if (Date.now() - stalledSince > STALL_TIMEOUT_MS) {
-      stalled = true;
-      ff.kill('SIGKILL');
-    }
-  }, 2000);
-
-  let clientGone = false;
-  const onClientAbort = () => {
-    clientGone = true;
-    ff.kill('SIGKILL');
-  };
-  res.on('close', onClientAbort);
-  res.on('error', () => {}); // assorbe errori di scrittura dopo la disconnessione del client
+  job.ff = ff;
 
   // Tiene solo la coda del log di ffmpeg: serve a capire perché un remux è fallito.
   let stderrTail = '';
@@ -260,31 +332,160 @@ async function streamHls(sourceUrl, headers, filename, res) {
     stderrTail = (stderrTail + chunk.toString()).slice(-STDERR_TAIL_BYTES);
   });
 
-  ff.stdout.on('data', chunk => { bytes += chunk.length; });
-  ff.stdout.pipe(res, { end: false });
+  let lastGrowth = Date.now();
+  let reason = null;
+  const watch = setInterval(() => {
+    fs.stat(job.file, (err, st) => {
+      if (!err && st.size > job.written) {
+        job.written = st.size;
+        lastGrowth = Date.now();
+      }
+      const now = Date.now();
+      if (now - lastGrowth > STALL_TIMEOUT_MS) {
+        reason = `nessun dato da ffmpeg per ${STALL_TIMEOUT_MS / 1000}s`;
+        ff.kill('SIGKILL');
+      } else if (job.clients === 0 && now - job.lastAccess > HLS_ORPHAN_MS) {
+        reason = 'nessun client collegato, conversione abbandonata';
+        ff.kill('SIGKILL');
+      }
+    });
+  }, 1000);
 
   const exitCode = await new Promise(resolve => {
     ff.on('error', () => resolve(-1));
     ff.on('close', code => resolve(code));
   });
+  clearInterval(watch);
 
-  clearInterval(stallCheck);
-  res.removeListener('close', onClientAbort);
-  if (clientGone) return;
+  try {
+    job.written = fs.statSync(job.file).size;
+  } catch {
+    // file mai creato: ffmpeg è fallito prima di scrivere
+  }
 
-  if (exitCode === 0) {
-    if (!res.writableEnded) res.end();
-    console.log(`HLS completato: ${filename} (${bytes} byte)`);
+  if (exitCode === 0 && !reason) {
+    job.status = 'done';
+    console.log(`HLS completato: ${job.filename} (${job.written} byte)`);
+  } else {
+    job.status = 'failed';
+    console.error(`HLS fallito: ${job.filename} dopo ${job.written} byte — ${reason || `ffmpeg uscito con codice ${exitCode}`}\n${stderrTail}`);
+  }
+}
+
+// "Range: bytes=N-" -> N (solo la forma aperta, l'unica usata dai download manager).
+function rangeStart(header) {
+  const m = /^bytes=(\d+)-$/.exec(String(header || '').trim());
+  return m ? parseInt(m[1], 10) : 0;
+}
+
+async function serveHlsJob(job, req, res, { fresh }) {
+  // Su un lavoro appena avviato non c'è niente da cui riprendere: si riparte da zero e lo
+  // si dichiara con un 200 (Nuvio allora riscrive il file dall'inizio).
+  const start = fresh ? 0 : rangeStart(req.headers.range);
+
+  if (job.status === 'failed') {
+    res.status(502).json({ error: 'Conversione HLS fallita, riprova' });
     return;
   }
 
-  // Remux fallito a metà: chiudere la risposta "normalmente" farebbe credere a Nuvio che
-  // il file sia completo (senza Content-Length non ha modo di accorgersene) e lascerebbe
-  // un film troncato segnato come scaricato. Interrompere la connessione lo fa invece
-  // risultare fallito, così si può riprovare.
-  const reason = stalled ? `nessun dato da ffmpeg per ${STALL_TIMEOUT_MS / 1000}s` : `ffmpeg uscito con codice ${exitCode}`;
-  console.error(`HLS fallito: ${filename} dopo ${bytes} byte — ${reason}\n${stderrTail}`);
-  res.destroy();
+  res.setHeader('Content-Type', 'video/mp2t');
+  res.setHeader('Content-Disposition', contentDisposition(job.filename));
+  res.setHeader('Accept-Ranges', 'bytes');
+
+  job.clients++;
+  job.lastAccess = Date.now();
+  let closed = false;
+  res.on('close', () => {
+    closed = true;
+  });
+  res.on('error', () => {}); // assorbe errori di scrittura dopo la disconnessione del client
+
+  try {
+    if (job.status === 'done') {
+      const total = job.written;
+      if (start >= total && total > 0) {
+        res.status(416).setHeader('Content-Range', `bytes */${total}`);
+        res.end();
+        return;
+      }
+      if (start > 0) {
+        res.status(206).setHeader('Content-Range', `bytes ${start}-${total - 1}/${total}`);
+      }
+      res.setHeader('Content-Length', String(total - start));
+      try {
+        await pipeline(fs.createReadStream(job.file, { start }), res);
+        job.delivered = true;
+      } catch {
+        // client disconnected mid-transfer, nothing more to do
+      }
+      return;
+    }
+
+    // Conversione in corso: si segue il file mentre cresce.
+    if (start > 0) {
+      res.status(206).setHeader('Content-Range', `bytes ${start}-${start + OPEN_ENDED_RANGE_SPAN}/*`);
+    }
+    res.flushHeaders();
+
+    let fd = null;
+    let pos = start;
+    const buffer = Buffer.alloc(TAIL_CHUNK_BYTES);
+    while (!closed) {
+      if (fd === null) {
+        try {
+          fd = fs.openSync(job.file, 'r');
+        } catch {
+          // ffmpeg non ha ancora creato il file
+        }
+      }
+      if (fd !== null && pos < job.written) {
+        const n = fs.readSync(fd, buffer, 0, Math.min(TAIL_CHUNK_BYTES, job.written - pos), pos);
+        if (n > 0) {
+          pos += n;
+          if (!res.write(Buffer.from(buffer.subarray(0, n)))) {
+            await new Promise(resolve => {
+              res.once('drain', resolve);
+              res.once('close', resolve);
+            });
+          }
+          continue;
+        }
+      }
+      if (job.status === 'done' && pos >= job.written) {
+        res.end(() => {
+          job.delivered = true;
+        });
+        break;
+      }
+      if (job.status === 'failed') {
+        // Interrompere la connessione (invece di chiuderla normalmente) fa risultare il
+        // download fallito in Nuvio, invece di un file troncato segnato come completato.
+        res.destroy();
+        break;
+      }
+      await new Promise(resolve => setTimeout(resolve, TAIL_POLL_MS));
+    }
+    if (fd !== null) fs.closeSync(fd);
+  } finally {
+    job.clients--;
+    job.lastAccess = Date.now();
+  }
 }
 
-module.exports = { prepareDownload, streamDownload, sanitizeFilename, detectType, guessExtension };
+// Serve una richiesta HLS se per questa sorgente esiste già un lavoro (ripresa di Nuvio o
+// secondo download): non serve risolvere di nuovo lo stream né riavviare ffmpeg.
+async function serveExistingHls(sourceKey, req, res) {
+  const job = getHlsJob(sourceKey);
+  if (!job) return false;
+  await serveHlsJob(job, req, res, { fresh: false });
+  return true;
+}
+
+module.exports = {
+  prepareDownload,
+  streamDownload,
+  serveExistingHls,
+  sanitizeFilename,
+  detectType,
+  guessExtension
+};
