@@ -8,7 +8,7 @@ const extractor = require('./src/extractor');
 
 const cfg = config.get();
 
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.5.1';
 
 const app = express();
 app.set('etag', false);
@@ -348,7 +348,7 @@ app.get('/stream/:type/:id.json', addonCors, asyncRoute(async (req, res) => {
     const provider = s.externalUrl ? extractor.providerFromUrl(s.externalUrl) : null;
     const details = s.kind === 'direct'
       ? `File diretto${s.size ? ` · ${formatSize(s.size)}` : ''} · download a velocità piena, riprendibile`
-      : 'HLS · convertito al volo: niente dimensione, più lento, se si interrompe riparte da zero';
+      : 'HLS · convertito al volo sul server: dimensione nota solo a conversione finita, riprendibile';
     const hints = { filename: `${label}${ext}` };
     if (s.size) hints.videoSize = s.size;
     return {
