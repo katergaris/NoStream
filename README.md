@@ -17,10 +17,16 @@ nuvio-offline **non accumula mai file in modo permanente sul server**. Quando pr
   senza mai scriverli su disco. L'header `Range` viene inoltrato alla fonte, quindi un
   download interrotto riprende da dove si era fermato;
 - se lo stream è **HLS (.m3u8)**, il server sceglie la variante a qualità più alta e
-  avvia ffmpeg (video copiato, audio ricodificato in AAC) con uscita **MPEG-TS (.ts)**
-  inoltrata al client mano a mano che viene prodotta. Ogni richiesta di ffmpeg ha un
-  timeout di 15s con riconnessione e fino a 10 tentativi per segmento, perché alcuni CDN
-  (es. vixsrc) lasciano ogni tanto connessioni appese.
+  avvia ffmpeg (video copiato, audio ricodificato in AAC) che scrive un **MPEG-TS (.ts)
+  temporaneo** su disco a velocità piena; il client riceve il file mentre cresce. La
+  conversione è indipendente dalla connessione: se il client si disconnette (Nuvio su
+  Android 14+ riapre la connessione a ogni cambio di rete) e riprende con `Range`, il
+  download continua dal punto raggiunto invece di ripartire da zero. Il file temporaneo
+  viene **cancellato 2 minuti dopo che il client l'ha ricevuto per intero** (o 6 ore dopo
+  l'ultimo accesso se il download non viene mai completato, o a ogni riavvio del
+  container). Ogni richiesta di ffmpeg ha un timeout di 15s con riconnessione e fino a 10
+  tentativi per segmento, perché alcuni CDN (es. vixsrc) lasciano ogni tanto connessioni
+  appese.
 
 In entrambi i casi la risposta HTTP arriva con `Content-Disposition: attachment`, quindi è
 il **browser del dispositivo da cui hai aperto la pagina** (es. il telefono/tablet dove usi
@@ -141,8 +147,8 @@ nella lista degli stream.
   avanzamento nell'app): il file passa in streaming dal server senza fermarsi, è il
   download manager del dispositivo a mostrare l'avanzamento. **Per l'HLS** la dimensione
   totale non è nota in anticipo, quindi si vedono i byte ricevuti ma non la percentuale.
-- Se un download HLS si interrompe, la ripresa riparte da zero (il remux non è
-  riprendibile a metà); per i file diretti riprende dal punto raggiunto.
+- Gli HLS occupano temporaneamente spazio su disco nel container (circa 200 MB–2 GB per
+  contenuto) finché il client non li ha ricevuti per intero.
 - Se la sorgente non risponde entro **30 secondi** (host lento/irraggiungibile) o smette
   di produrre dati per **60 secondi consecutivi** durante il remux HLS (stream vuoto,
   sessione scaduta, relay che risponde ma senza contenuto reale), il download viene

@@ -8,7 +8,7 @@ const extractor = require('./src/extractor');
 
 const cfg = config.get();
 
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.5.0';
 
 const app = express();
 app.set('etag', false);
@@ -148,6 +148,12 @@ async function handleDownload(rawData, req, res) {
     return res.status(400).json({ error: 'Parametro data non valido' });
   }
 
+  // Ripresa di un download HLS (Nuvio riapre la connessione a ogni cambio di rete): ci si
+  // aggancia alla conversione già in corso o finita invece di risolvere di nuovo lo stream
+  // (che per gli externalUrl darebbe un URL con token diverso) e di ripartire da zero.
+  const sourceKey = params.externalUrl || params.sourceUrl;
+  if (sourceKey && await streamer.serveExistingHls(sourceKey, req, res)) return;
+
   // Stream "scraper" (solo externalUrl): risolvi lato server nel vero URL dello stream
   // prima di avviare il download.
   if (!params.sourceUrl && params.externalUrl) {
@@ -168,7 +174,7 @@ async function handleDownload(rawData, req, res) {
     return res.status(e.status || 400).json({ error: e.message });
   }
 
-  await streamer.streamDownload(prepared, req, res);
+  await streamer.streamDownload({ ...prepared, sourceKey }, req, res);
 }
 
 // Formato con estensione nel path (es. /api/download/<dati>/Titolo.ts): alcune app,
