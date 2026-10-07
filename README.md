@@ -308,9 +308,22 @@ L'immagine viene ricompilata da GitHub Actions a ogni push su `main`.
 - **La lista arriva tutta insieme**: il protocollo degli addon prevede una sola risposta
   per richiesta, quindi Nuvio mostra le voci di NoStream quando l'addon sorgente più
   lento ha risposto (o è scaduto il timeout).
-- **Android 14+**: Nuvio può riaprire spesso la connessione del download o metterlo in
-  pausa; grazie alla ripresa con `Range` basta premere "riprendi" e continua dal punto
-  raggiunto.
+- **Download in Nuvio che si mettono in pausa (Android 14+) — problema noto.** Durante il
+  download Nuvio interrompe e riapre spesso la connessione (nei log di NoStream: una
+  connessione ogni 3-10 secondi, ognuna da circa 10-15 MB). Nuvio conta ogni interruzione
+  come errore e, dopo 4 errori, mette il download in pausa finché non lo riprendi a mano.
+  Le interruzioni nascono sul telefono, non su NoStream: lo stesso file scaricato da un PC
+  arriva intero in una sola connessione, e NoStream si ricollega già da solo alla fonte se è
+  questa a cadere.
+
+  **Per ora l'unica soluzione è premere "Riprendi" nella schermata Download di Nuvio ogni
+  volta che si ferma, finché il download non è completo.** Non si perde nulla: si riparte
+  dal punto raggiunto. Non riaprire invece lo stream dalla scheda dell'episodio, perché
+  Nuvio cancella il file parziale e ricomincia da zero.
+
+  In alternativa, per scaricare senza interventi (anche un'intera stagione) c'è la
+  [coda della web app](#coda-download-solo-piattaforma-web), che usa il gestore download
+  del browser.
 - **Web app**: va aperta dal browser dello stesso dispositivo su cui vuoi il file.
 
 ---
