@@ -4,7 +4,6 @@ const os = require('os');
 const path = require('path');
 const { spawn, spawnSync } = require('child_process');
 const { pipeline } = require('stream/promises');
-const { Readable } = require('stream');
 
 const config = require('./config');
 
@@ -57,7 +56,7 @@ function prepareDownload({ sourceUrl, headers, title, streamTitle }) {
   return { sourceUrl, headers: headers || null, filename: `${baseName}${ext}`, type };
 }
 
-async function streamDownload({ sourceUrl, sourceKey, headers, filename, type }, req, res) {
+async function streamDownload({ sourceUrl, sourceKey, headers, filename, type, refreshSource }, req, res) {
   const limit = config.get().concurrentDownloads || 1;
   if (type === 'hls') {
     // Il limite conta le conversioni ffmpeg in corso, non le connessioni: le riprese di
@@ -80,31 +79,109 @@ async function streamDownload({ sourceUrl, sourceKey, headers, filename, type },
   // un cambio di rete la connessione vecchia resta aperta lato server (il telefono non
   // riesce a chiuderla, e senza timeout dei socket può durare minuti), occupa il posto e la
   // ripresa viene respinta — il download resta in pausa finché non si preme di nuovo play.
-  await streamDirect(sourceUrl, headers, filename, req, res);
+  await streamDirect(sourceUrl, headers, filename, req, res, refreshSource);
 }
 
-async function streamDirect(sourceUrl, headers, filename, req, res) {
+// Fonte che non manda byte per così tanto: considerata bloccata, ci si ricollega. Deve
+// restare ben sotto il timeout di lettura di Nuvio (60 s), che altrimenti conta un errore.
+const UPSTREAM_STALL_MS = parseInt(process.env.NOSTREAM_STALL_MS, 10) || 20000;
+// Riconnessioni alla fonte consentite per una singola connessione del client.
+const UPSTREAM_MAX_RECONNECTS = 30;
+const RESOLVABLE_STATUSES = new Set([403, 404, 410]);
+
+// "bytes 100-199/1000" -> { start: 100, end: 199, total: 1000 }
+function parseContentRange(header) {
+  const m = /^bytes (\d+)-(\d+)\/(\d+|\*)$/.exec(String(header || '').trim());
+  if (!m) return null;
+  return { start: Number(m[1]), end: Number(m[2]), total: m[3] === '*' ? null : Number(m[3]) };
+}
+
+async function fetchUpstream(src, range) {
   const controller = new AbortController();
-  const timeoutTimer = setTimeout(() => controller.abort(), FIRST_BYTE_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), FIRST_BYTE_TIMEOUT_MS);
+  const headers = { ...(src.headers || {}) };
+  if (range) headers.Range = range;
+  try {
+    const res = await fetch(src.url, { headers, signal: controller.signal });
+    return { res, controller };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function discard(upstream) {
+  if (upstream) {
+    upstream.res.body?.cancel().catch(() => {});
+    upstream.controller.abort();
+  }
+}
+
+function waitDrain(res) {
+  return new Promise(resolve => {
+    const done = () => {
+      res.off('drain', done);
+      res.off('close', done);
+      resolve();
+    };
+    res.on('drain', done);
+    res.on('close', done);
+  });
+}
+
+// Copia i byte della fonte verso il client finché la fonte non finisce ('end'), non si
+// blocca per UPSTREAM_STALL_MS ('stall'), non cade ('error') o il client non chiude.
+async function pump(upstream, res, onBytes) {
+  const reader = upstream.res.body.getReader();
+  try {
+    while (!res.destroyed) {
+      let timer;
+      const stall = new Promise(resolve => { timer = setTimeout(() => resolve({ stall: true }), UPSTREAM_STALL_MS); });
+      const r = await Promise.race([reader.read(), stall]);
+      clearTimeout(timer);
+      if (r.stall) return 'stall';
+      if (r.done) return 'end';
+      onBytes(r.value.length);
+      if (!res.write(r.value)) await waitDrain(res);
+    }
+    return 'closed';
+  } catch {
+    return 'error';
+  } finally {
+    upstream.controller.abort();
+    reader.cancel().catch(() => {});
+  }
+}
+
+// File diretto: proxy verso la fonte con supporto Range. Se la fonte cade o si blocca a
+// metà, NoStream si ricollega da solo dal byte a cui era arrivato e continua sulla stessa
+// connessione verso il client: Nuvio non vede l'interruzione. Ogni errore che arriva a
+// Nuvio, invece, gli costa una pausa (30 s, 60 s, 120 s…) e dopo 4 errori il download si
+// ferma finché non si preme di nuovo play.
+async function streamDirect(sourceUrl, headers, filename, req, res, refreshSource) {
+  let src = { url: sourceUrl, headers: headers || {} };
 
   // Nuvio, quando riprende un download interrotto, chiede solo i byte mancanti con
   // "Range: bytes=N-": inoltrandolo alla fonte la ripresa riparte da lì invece che da zero
   // (senza, un film da 1+ GB su connessione instabile rischia di non finire mai).
-  const upstreamHeaders = { ...(headers || {}) };
-  if (req.headers.range) upstreamHeaders.Range = req.headers.range;
+  const clientRange = req.headers.range || null;
 
-  let upstream;
+  let first;
   try {
-    upstream = await fetch(sourceUrl, { headers: upstreamHeaders, signal: controller.signal });
+    first = await fetchUpstream(src, clientRange);
+    // Link della fonte preso dalla cache e nel frattempo scaduto: si risolve di nuovo.
+    if (refreshSource && RESOLVABLE_STATUSES.has(first.res.status)) {
+      discard(first);
+      src = await refreshSource();
+      first = await fetchUpstream(src, clientRange);
+    }
   } catch (e) {
-    clearTimeout(timeoutTimer);
     const message = e.name === 'AbortError'
       ? `Timeout: lo stream non ha risposto entro ${FIRST_BYTE_TIMEOUT_MS / 1000}s`
       : `Impossibile contattare lo stream: ${e.message}`;
     res.status(502).json({ error: message });
     return;
   }
-  clearTimeout(timeoutTimer);
+  const upstream = first.res;
 
   if (upstream.status === 403) {
     // Alcuni CDN legano l'URL firmato all'IP/contesto di chi lo ha generato (il device
@@ -112,11 +189,13 @@ async function streamDirect(sourceUrl, headers, filename, req, res) {
     // anche con gli stessi header. Come fallback, reindirizziamo il browser a scaricare
     // direttamente dalla fonte: perdiamo il controllo su Content-Disposition/header
     // custom, ma l'IP torna a combaciare con quello atteso dal CDN.
-    res.redirect(302, sourceUrl);
+    discard(first);
+    res.redirect(302, src.url);
     return;
   }
 
   if (upstream.status === 416) {
+    discard(first);
     res.status(416);
     const cr = upstream.headers.get('content-range');
     if (cr) res.setHeader('Content-Range', cr);
@@ -125,38 +204,81 @@ async function streamDirect(sourceUrl, headers, filename, req, res) {
   }
 
   if (!upstream.ok) {
+    discard(first);
     res.status(502).json({ error: `Il server dello stream ha risposto ${upstream.status} ${upstream.statusText}` });
     return;
   }
 
-  const partial = upstream.status === 206 && upstream.headers.get('content-range');
-  if (partial) {
+  const range = upstream.status === 206 ? parseContentRange(upstream.headers.get('content-range')) : null;
+  if (range) {
     res.status(206);
     res.setHeader('Content-Range', upstream.headers.get('content-range'));
   }
   res.setHeader('Content-Disposition', contentDisposition(filename));
   res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/octet-stream');
-  if (partial || upstream.headers.get('accept-ranges') === 'bytes') res.setHeader('Accept-Ranges', 'bytes');
+  if (range || upstream.headers.get('accept-ranges') === 'bytes') res.setHeader('Accept-Ranges', 'bytes');
   const len = upstream.headers.get('content-length');
   if (len) res.setHeader('Content-Length', len);
+  // Servono al client per verificare (If-Range) che il file non sia cambiato tra una
+  // ripresa e l'altra.
+  for (const h of ['etag', 'last-modified']) {
+    const v = upstream.headers.get(h);
+    if (v) res.setHeader(h, v);
+  }
 
   // HEAD (controllo del link prima del download): solo gli header. Altrimenti Express
   // avrebbe scaricato dalla fonte l'intero file solo per buttarlo via.
   if (req.method === 'HEAD') {
-    upstream.body?.cancel().catch(() => {});
+    discard(first);
     res.end();
     return;
   }
 
-  const nodeStream = Readable.fromWeb(upstream.body);
-  res.on('close', () => {
-    if (!res.writableEnded) nodeStream.destroy();
-  });
+  // Tratto da consegnare [pos, end]: serve per sapere da dove ricollegarsi alla fonte.
+  let pos = range ? range.start : 0;
+  const end = range ? range.end : (len ? Number(len) - 1 : null);
+  const resumable = end !== null && (range !== null || upstream.headers.get('accept-ranges') === 'bytes');
 
-  try {
-    await pipeline(nodeStream, res);
-  } catch {
-    // client disconnected mid-transfer, nothing more to do
+  let current = first;
+  res.on('close', () => discard(current));
+
+  for (let reconnects = 0; ; ) {
+    const outcome = await pump(current, res, n => { pos += n; });
+    if (outcome === 'closed' || res.destroyed) return;
+    if (end === null ? outcome === 'end' : pos > end) {
+      res.end();
+      return;
+    }
+
+    // La fonte è caduta o si è bloccata prima della fine: ci si ricollega dal byte mancante.
+    let resumed = null;
+    while (!resumed && resumable && reconnects < UPSTREAM_MAX_RECONNECTS && !res.destroyed) {
+      reconnects++;
+      console.log(`Fonte ${outcome === 'stall' ? 'bloccata' : 'interrotta'} per ${filename} al byte ${pos}: riconnessione ${reconnects}`);
+      await new Promise(resolve => setTimeout(resolve, Math.min(500 * reconnects, 5000)));
+      if (res.destroyed) return;
+      try {
+        let next = await fetchUpstream(src, `bytes=${pos}-${end}`);
+        if (refreshSource && RESOLVABLE_STATUSES.has(next.res.status)) {
+          discard(next);
+          src = await refreshSource();
+          next = await fetchUpstream(src, `bytes=${pos}-${end}`);
+        }
+        const r = parseContentRange(next.res.headers.get('content-range'));
+        if (next.res.status === 206 && r && r.start === pos) resumed = next;
+        else discard(next);
+      } catch {
+        // fonte ancora irraggiungibile: si riprova al giro successivo
+      }
+    }
+    if (!resumed) {
+      // Impossibile continuare: interrompere la connessione (invece di chiuderla
+      // normalmente) fa capire al client che il file non è completo.
+      console.error(`Fonte persa definitivamente per ${filename} al byte ${pos}`);
+      res.destroy();
+      return;
+    }
+    current = resumed;
   }
 }
 
