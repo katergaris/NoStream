@@ -488,12 +488,24 @@ const EXTRACTORS = {
   voe: extractVoe,
 };
 
-async function resolveExternalUrl(externalUrl) {
+// Link risolti tenuti in memoria per qualche minuto. Nuvio riapre il download a ogni
+// "cambio di rete" (con Tailscale anche ogni pochi secondi): rifare ogni volta lo scraping
+// della pagina del provider rallentava la risposta oltre la pazienza di Nuvio, che chiudeva
+// e riprovava senza mai ricevere un byte.
+const RESOLVE_CACHE_MS = 15 * 60 * 1000;
+const resolveCache = new Map();
+
+async function resolveExternalUrl(externalUrl, { fresh = false } = {}) {
+  const cached = resolveCache.get(externalUrl);
+  if (!fresh && cached && Date.now() - cached.at < RESOLVE_CACHE_MS) return cached.value;
   const provider = providerFromUrl(externalUrl);
   const p = await parseParams(externalUrl);
   const fn = EXTRACTORS[provider];
   if (!fn) throw makeError(`Provider extractor non supportato: ${provider}`, 501);
-  return fn(p);
+  const value = await fn(p);
+  resolveCache.set(externalUrl, { at: Date.now(), value });
+  for (const [k, v] of resolveCache) if (Date.now() - v.at > RESOLVE_CACHE_MS) resolveCache.delete(k);
+  return value;
 }
 
 function isProviderSupported(externalUrl) {

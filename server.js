@@ -9,7 +9,7 @@ const progress = require('./src/progress');
 
 const cfg = config.get();
 
-const APP_VERSION = '1.7.1';
+const APP_VERSION = '1.8.0';
 
 const app = express();
 app.set('etag', false);
@@ -160,8 +160,11 @@ async function handleDownload(rawData, req, res) {
   if (sourceKey && await streamer.serveExistingHls(sourceKey, req, res)) return;
 
   // Stream "scraper" (solo externalUrl): risolvi lato server nel vero URL dello stream
-  // prima di avviare il download.
+  // prima di avviare il download. Il risultato resta in memoria qualche minuto; se intanto
+  // il link scade, refreshSource lo risolve di nuovo durante il download.
+  let refreshSource = null;
   if (!params.sourceUrl && params.externalUrl) {
+    const baseHeaders = params.headers || {};
     let resolved;
     try {
       resolved = await extractor.resolveExternalUrl(params.externalUrl);
@@ -169,7 +172,11 @@ async function handleDownload(rawData, req, res) {
       return res.status(e.status || 502).json({ error: e.message });
     }
     params.sourceUrl = resolved.sourceUrl;
-    params.headers = { ...(params.headers || {}), ...(resolved.headers || {}) };
+    params.headers = { ...baseHeaders, ...(resolved.headers || {}) };
+    refreshSource = async () => {
+      const fresh = await extractor.resolveExternalUrl(params.externalUrl, { fresh: true });
+      return { url: fresh.sourceUrl, headers: { ...baseHeaders, ...(fresh.headers || {}) } };
+    };
   }
 
   let prepared;
@@ -179,7 +186,7 @@ async function handleDownload(rawData, req, res) {
     return res.status(e.status || 400).json({ error: e.message });
   }
 
-  await streamer.streamDownload({ ...prepared, sourceKey }, req, res);
+  await streamer.streamDownload({ ...prepared, sourceKey, refreshSource }, req, res);
 }
 
 // Formato con estensione nel path (es. /api/download/<dati>/Titolo.ts): alcune app,
@@ -190,6 +197,31 @@ async function handleDownload(rawData, req, res) {
 // Download avviati dalla coda web: "?dl=<id>" ne traccia l'avanzamento (vedi /api/progress).
 function trackDownload(req, res) {
   if (req.query.dl && req.method !== 'HEAD') progress.track(String(req.query.dl).slice(0, 64), res);
+  logDownloadConnection(req, res);
+}
+
+function formatMB(bytes) {
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+// Una riga di log per ogni connessione di download: da che byte parte, quanto ha mandato,
+// quanto è durata e come è finita. Serve a capire le pause dei download (es. in Nuvio).
+function logDownloadConnection(req, res) {
+  const start = Date.now();
+  const via = req.headers['x-forwarded-for'] ? `proxy, client ${req.headers['x-forwarded-for']}` : req.socket.remoteAddress;
+  let bytes = 0;
+  const count = chunk => {
+    if (chunk && typeof chunk !== 'function') bytes += typeof chunk === 'string' ? Buffer.byteLength(chunk) : chunk.length;
+  };
+  const write = res.write;
+  res.write = function (chunk, ...rest) { count(chunk); return write.call(this, chunk, ...rest); };
+  const end = res.end;
+  res.end = function (chunk, ...rest) { count(chunk); return end.call(this, chunk, ...rest); };
+  res.on('close', () => {
+    const name = req.params.filename ? decodeURIComponent(req.params.filename) : 'download';
+    const how = res.writableFinished ? 'completata' : 'chiusa prima della fine';
+    console.log(`[download] ${name} ${req.method} range=${req.headers.range || '-'} -> ${res.statusCode}, ${formatMB(bytes)} in ${((Date.now() - start) / 1000).toFixed(1)} s, ${how} (${via})`);
+  });
 }
 
 app.get('/api/progress', (req, res) => {
@@ -425,6 +457,12 @@ httpServer.timeout = 0;
 // risposto qualcos'altro". Logghiamo esplicitamente e rispondiamo 400 come farebbe
 // comunque Node di default.
 httpServer.on('clientError', (err, socket) => {
+  // ECONNRESET/EPIPE: il client ha chiuso la connessione (normale quando Nuvio riparte),
+  // non è una richiesta malformata.
+  if (err.code === 'ECONNRESET' || err.code === 'EPIPE') {
+    socket.destroy();
+    return;
+  }
   console.error(`CLIENT ERROR: richiesta malformata rifiutata prima di Express — ${err.message}`);
   if (socket.writable) {
     socket.end('HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n');
