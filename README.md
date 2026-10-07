@@ -241,7 +241,7 @@ link `http://` verso una porta HTTPS e il download fallirebbe con errore 400.
 | `tmdbApiKey` | `""` | API key v3 di TMDB |
 | `language` | `it-IT` | Lingua di titoli e metadati (`it-IT`, `en-US`) |
 | `port` | `4321` | Porta HTTP |
-| `concurrentDownloads` | `2` | Massimo di trasferimenti diretti e di conversioni HLS contemporanei (le riprese dello stesso download non contano) |
+| `concurrentDownloads` | `2` | Massimo di conversioni HLS contemporanee (le riprese dello stesso download non contano; i file diretti non hanno limite) |
 | `addonTimeoutMs` | `60000` | Tempo massimo di attesa per ogni addon sorgente: gli addon più lenti vengono saltati. NoStream risponde a Nuvio solo quando tutti gli addon hanno risposto o sono scaduti, quindi abbassarlo (es. `15000`) rende la lista più veloce |
 | `addons` | `[]` | Addon sorgente (`name`, `manifestUrl`), gestibili dalla UI |
 

@@ -18,8 +18,6 @@ const STALL_TIMEOUT_MS = 60000;
 const FFMPEG_RW_TIMEOUT_US = 15000000;
 const STDERR_TAIL_BYTES = 4000;
 
-let active = 0;
-
 function sanitizeFilename(name) {
   const cleaned = String(name || 'file')
     .normalize('NFKD')
@@ -77,16 +75,12 @@ async function streamDownload({ sourceUrl, sourceKey, headers, filename, type },
     return;
   }
 
-  if (active >= limit) {
-    res.status(429).json({ error: 'Troppi download in corso, riprova tra poco' });
-    return;
-  }
-  active++;
-  try {
-    await streamDirect(sourceUrl, headers, filename, req, res);
-  } finally {
-    active--;
-  }
+  // I file diretti non hanno limite: sono un semplice inoltro di byte, senza carico sulla
+  // RPi. Contare le connessioni faceva rifiutare con 429 proprio le riprese di Nuvio: dopo
+  // un cambio di rete la connessione vecchia resta aperta lato server (il telefono non
+  // riesce a chiuderla, e senza timeout dei socket può durare minuti), occupa il posto e la
+  // ripresa viene respinta — il download resta in pausa finché non si preme di nuovo play.
+  await streamDirect(sourceUrl, headers, filename, req, res);
 }
 
 async function streamDirect(sourceUrl, headers, filename, req, res) {
@@ -142,9 +136,17 @@ async function streamDirect(sourceUrl, headers, filename, req, res) {
   }
   res.setHeader('Content-Disposition', contentDisposition(filename));
   res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/octet-stream');
-  if (upstream.headers.get('accept-ranges') === 'bytes') res.setHeader('Accept-Ranges', 'bytes');
+  if (partial || upstream.headers.get('accept-ranges') === 'bytes') res.setHeader('Accept-Ranges', 'bytes');
   const len = upstream.headers.get('content-length');
   if (len) res.setHeader('Content-Length', len);
+
+  // HEAD (controllo del link prima del download): solo gli header. Altrimenti Express
+  // avrebbe scaricato dalla fonte l'intero file solo per buttarlo via.
+  if (req.method === 'HEAD') {
+    upstream.body?.cancel().catch(() => {});
+    res.end();
+    return;
+  }
 
   const nodeStream = Readable.fromWeb(upstream.body);
   res.on('close', () => {
