@@ -99,7 +99,10 @@ function route() {
     loadAddons();
     loadSettings();
   }
-  if (view === 'queue') renderQueue();
+  if (view === 'queue') {
+    renderQueue();
+    refreshServerFiles();
+  }
   renderActionBar(view);
 }
 
@@ -316,7 +319,10 @@ async function fetchStreams(tmdbId, type, season, episode) {
   const params = new URLSearchParams({ tmdbId, type });
   if (season !== undefined && season !== null) params.set('season', season);
   if (episode !== undefined && episode !== null) params.set('episode', episode);
-  return api(`/streams?${params.toString()}`);
+  const data = await api(`/streams?${params.toString()}`);
+  // L'id del titolo serve al server per riconoscere lo stesso stream già preparato
+  for (const s of data.streams || []) s.vid = data.stremioId;
+  return data;
 }
 
 async function loadStreamsInto(wrap, { season, episode }) {
@@ -358,14 +364,20 @@ function renderStreams(wrap, { streams, errors }, item, season, episode) {
           best ? el('span', { class: 'tag done' }, 'consigliato') : null,
           s.kind === 'direct' ? el('span', { class: 'tag direct' }, `file diretto${s.size ? ' · ' + formatSize(s.size) : ''}`) : null,
           s.kind === 'hls' ? el('span', { class: 'tag hls' }, 'HLS · da convertire') : null,
-          !s.supported ? el('span', { class: 'tag warn' }, 'non supportato (torrent)') : null
+          !s.supported ? el('span', { class: 'tag warn' }, 'non supportato (torrent)') : null,
+          serverTag(s.prepared)
         ]),
         el('div', { class: 'stream-title' }, s.title),
         el('div', { class: 'stream-addon' }, (s.addonNames || [s.addonName]).join(', '))
       ]),
       s.supported ? el('div', { class: 'stream-actions' }, [
         el('button', { class: 'btn btn-sm', type: 'button', onclick: () => addToQueue([{ item, season, episode, pinned: s }]) }, '＋ CODA'),
-        el('button', { class: 'btn btn-sm btn-accent', type: 'button', onclick: () => downloadNow(s, title, item.type) }, '⬇ SCARICA')
+        s.kind === 'direct' && !(s.prepared && s.prepared.status !== 'failed')
+          ? el('button', { class: 'btn btn-sm', type: 'button', title: 'Scarica il file sul server senza usare questo dispositivo', onclick: e => prepareOnServer(s, title, item.type, e.currentTarget) }, '📦 SERVER')
+          : null,
+        s.prepared && s.prepared.status === 'done'
+          ? el('a', { class: 'btn btn-sm btn-accent', href: s.prepared.path, download: '' }, '⬇ DAL SERVER')
+          : el('button', { class: 'btn btn-sm btn-accent', type: 'button', onclick: () => downloadNow(s, title, item.type) }, '⬇ SCARICA')
       ]) : null
     ]));
   }
@@ -380,8 +392,26 @@ function downloadPayload(stream, title, mediaType) {
     headers: stream.headers,
     streamTitle: stream.title,
     title,
+    vid: stream.vid,
     mediaType: mediaType === 'tv' ? 'series' : 'movie'
   };
+}
+
+async function prepareOnServer(stream, title, mediaType, button) {
+  button.disabled = true;
+  try {
+    await api('/prepared', {
+      method: 'POST',
+      body: JSON.stringify({ data: base64UrlEncode(JSON.stringify(downloadPayload(stream, title, mediaType))) })
+    });
+    button.textContent = '✓ IN PREPARAZIONE';
+    toast('Preparazione sul server avviata: la segui nella Coda, sezione "Sul server"');
+    state.streamCache.clear();
+    refreshServerFiles();
+  } catch (err) {
+    button.disabled = false;
+    toast(err.message, true);
+  }
 }
 
 function base64UrlEncode(str) {
@@ -809,8 +839,74 @@ function renderQueue() {
   });
 }
 
+// ---- File preparati sul server ----
+
+function serverTag(p) {
+  if (!p || p.status === 'failed') return null;
+  if (p.status === 'done') return el('span', { class: 'tag done' }, 'pronto sul server');
+  const pct = p.size ? Math.floor((p.written / p.size) * 100) : 0;
+  return el('span', { class: 'tag queued' }, `sul server ${pct}%`);
+}
+
+let serverFiles = [];
+
+async function refreshServerFiles() {
+  try {
+    const { items } = await api('/prepared');
+    serverFiles = items;
+  } catch {
+    return;
+  }
+  renderServerFiles();
+}
+
+function renderServerFiles() {
+  const box = $('#server-list');
+  if (!box) return;
+  box.innerHTML = '';
+  $('#server-section').hidden = serverFiles.length === 0;
+  for (const f of serverFiles) {
+    const pct = f.size ? Math.min(100, Math.floor((f.written / f.size) * 100)) : 0;
+    const status = {
+      queued: 'In attesa sul server',
+      running: f.size ? `Download sul server · ${formatSize(f.written) || '0 MB'} di ${formatSize(f.size)} (${pct}%)` : 'Collegamento alla fonte…',
+      done: `Pronto sul server · ${formatSize(f.size)}`,
+      failed: `Non riuscito: ${f.error || 'errore sconosciuto'}`
+    }[f.status] || f.status;
+    box.appendChild(el('div', { class: 'queue-item' + (f.status === 'running' ? ' active' : '') }, [
+      el('div', { class: 'queue-top' }, [
+        el('div', { class: 'queue-title' }, [f.title || f.filename, el('small', {}, f.filename)]),
+        el('div', { class: 'queue-actions' }, [
+          f.status !== 'failed'
+            ? el('a', { class: 'icon-btn', href: f.path, download: '', title: f.status === 'done' ? 'Scarica su questo dispositivo' : 'Scarica (il resto arriva man mano)' }, '⬇')
+            : null,
+          el('button', { class: 'icon-btn', type: 'button', title: 'Elimina dal server', onclick: () => deleteServerFile(f) }, '✕')
+        ])
+      ]),
+      f.status === 'running' || f.status === 'queued'
+        ? el('div', { class: 'progress' + (f.size ? '' : ' indeterminate') }, el('div', { style: `width:${pct}%` }))
+        : null,
+      el('div', { class: 'queue-status' + (f.status === 'failed' ? ' error' : '') }, status)
+    ]));
+  }
+}
+
+async function deleteServerFile(f) {
+  if (!confirm(`Eliminare "${f.title || f.filename}" dal server?`)) return;
+  try {
+    await api(`/prepared/${f.key}`, { method: 'DELETE' });
+  } catch (err) {
+    toast(err.message, true);
+  }
+  state.streamCache.clear();
+  refreshServerFiles();
+}
+
 function initQueue() {
   loadQueue();
+  setInterval(() => {
+    if ($('#view-queue').classList.contains('active')) refreshServerFiles();
+  }, 3000);
   $('#queue-toggle').addEventListener('click', () => {
     queue.running = !queue.running;
     saveQueue();

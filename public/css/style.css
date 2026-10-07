@@ -400,3 +400,7 @@ body.has-action-bar .toast { bottom: 96px; }
   .queue-controls .btn { flex: 1; padding: 10px 8px; font-size: 0.75rem; }
   .action-bar { padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); }
 }
+
+.server-section { margin-top: 28px; }
+.server-section[hidden] { display: none; }
+a.icon-btn { text-decoration: none; }

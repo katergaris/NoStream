@@ -6,10 +6,29 @@ const addons = require('./src/addons');
 const streamer = require('./src/streamer');
 const extractor = require('./src/extractor');
 const progress = require('./src/progress');
+const prepared = require('./src/prepared');
 
 const cfg = config.get();
 
-const APP_VERSION = '1.8.0';
+// Come ottenere il vero URL della fonte da un payload di download (risolvendo gli
+// externalUrl degli addon "scraper"); fresh = ignora la cache dei link risolti.
+async function resolvePayloadSource(p, { fresh = false } = {}) {
+  if (!p.sourceUrl && p.externalUrl) {
+    const r = await extractor.resolveExternalUrl(p.externalUrl, { fresh });
+    return { url: r.sourceUrl, headers: { ...(p.headers || {}), ...(r.headers || {}) } };
+  }
+  return { url: p.sourceUrl, headers: p.headers || {} };
+}
+prepared.setResolver(resolvePayloadSource);
+prepared.init();
+
+// Nome del file preparato: titolo + estensione della fonte (gli scraper danno .mp4).
+function preparedFilename(p) {
+  const ext = p.sourceUrl ? streamer.guessExtension(p.sourceUrl) : '.mp4';
+  return `${streamer.sanitizeFilename(p.title || p.streamTitle || 'download')}${ext}`;
+}
+
+const APP_VERSION = '1.9.0';
 
 const app = express();
 app.set('etag', false);
@@ -78,6 +97,10 @@ app.get('/api/streams', asyncRoute(async (req, res) => {
   // Stessi criteri dell'addon per Nuvio: diretti con dimensione nota in cima, poi HLS;
   // i non supportati (torrent) in fondo, solo per informazione.
   const ranked = await rankDownloadable(streams.filter(s => s.supported));
+  for (const s of ranked) {
+    const job = prepared.get(prepared.keyFor({ vid: stremioId, addonName: s.addonName, streamTitle: s.title }));
+    if (job) s.prepared = prepared.publicView(job);
+  }
   const unsupported = streams.filter(s => !s.supported);
   res.json({ imdbId, stremioId, streams: [...ranked, ...unsupported], errors });
 }));
@@ -159,6 +182,15 @@ async function handleDownload(rawData, req, res) {
   const sourceKey = params.externalUrl || params.sourceUrl;
   if (sourceKey && await streamer.serveExistingHls(sourceKey, req, res)) return;
 
+  // File già preparato (o in preparazione) sul server: si serve dal disco, senza toccare
+  // la fonte. Le riprese di Nuvio arrivano così alla velocità della rete di casa.
+  const original = { ...params };
+  const useDisk = req.method !== 'HEAD';
+  if (useDisk) {
+    const existing = prepared.get(prepared.keyFor(original));
+    if (existing && existing.status !== 'failed' && await prepared.serve(existing, req, res)) return;
+  }
+
   // Stream "scraper" (solo externalUrl): risolvi lato server nel vero URL dello stream
   // prima di avviare il download. Il risultato resta in memoria qualche minuto; se intanto
   // il link scade, refreshSource lo risolve di nuovo durante il download.
@@ -179,14 +211,21 @@ async function handleDownload(rawData, req, res) {
     };
   }
 
-  let prepared;
+  let preparedDl;
   try {
-    prepared = streamer.prepareDownload(params);
+    preparedDl = streamer.prepareDownload(params);
   } catch (e) {
     return res.status(e.status || 400).json({ error: e.message });
   }
 
-  await streamer.streamDownload({ ...prepared, sourceKey, refreshSource }, req, res);
+  // File diretto: NoStream lo scarica sul proprio disco a piena velocità e intanto lo passa
+  // al client. Se la dimensione non è nota (o manca spazio) si ripiega sul proxy diretto.
+  if (useDisk && preparedDl.type === 'direct') {
+    const job = prepared.ensure(original, { title: original.title, filename: preparedDl.filename, onDemand: true });
+    if (await prepared.serve(job, req, res)) return;
+  }
+
+  await streamer.streamDownload({ ...preparedDl, sourceKey, refreshSource }, req, res);
 }
 
 // Formato con estensione nel path (es. /api/download/<dati>/Titolo.ts): alcune app,
@@ -238,6 +277,82 @@ app.get('/api/download', asyncRoute(async (req, res) => {
   trackDownload(req, res);
   await handleDownload(req.query.data, req, res);
 }));
+
+// ---- Preparazione sul server ----
+
+app.get('/api/prepared', (req, res) => {
+  res.json({ items: prepared.list() });
+});
+
+app.post('/api/prepared', (req, res) => {
+  let params;
+  try {
+    params = decodeDownloadPayload(req.body && req.body.data);
+  } catch {
+    return res.status(400).json({ error: 'Parametro data non valido' });
+  }
+  if (!params.sourceUrl && !params.externalUrl) return res.status(400).json({ error: 'Stream senza URL' });
+  const job = prepared.ensure(params, { title: params.title, filename: preparedFilename(params) });
+  res.status(201).json({ item: prepared.publicView(job) });
+});
+
+app.delete('/api/prepared/:key', (req, res) => {
+  if (!prepared.remove(req.params.key)) return res.status(404).json({ error: 'Non trovato' });
+  res.status(204).end();
+});
+
+app.get('/api/prepared/:key/:filename', asyncRoute(async (req, res) => {
+  logDownloadConnection(req, res);
+  const job = prepared.get(req.params.key);
+  if (!job) return res.status(404).json({ error: 'File non più presente sul server' });
+  if (!(await prepared.serve(job, req, res)) && !res.headersSent) {
+    res.status(502).json({ error: job.error || 'Preparazione non riuscita' });
+  }
+}));
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Pagina aperta da Nuvio toccando "📦 Prepara sul server" (stream con solo externalUrl,
+// che Nuvio apre nel browser): avvia la preparazione e ne mostra l'avanzamento.
+app.get('/prepare/:data', (req, res) => {
+  let params;
+  try {
+    params = decodeDownloadPayload(req.params.data);
+  } catch {
+    return res.status(400).send('Link non valido');
+  }
+  const job = prepared.ensure(params, { title: params.title, filename: preparedFilename(params) });
+  const pct = job.size ? Math.floor((job.written / job.size) * 100) : 0;
+  const state = {
+    queued: 'In coda sul server…',
+    running: job.size ? `Download sul server: ${pct}% (${formatSize(job.written)} di ${formatSize(job.size)})` : 'Collegamento alla fonte…',
+    done: `Pronto sul server · ${formatSize(job.size)}`,
+    failed: `Non riuscito: ${job.error || 'errore sconosciuto'}`
+  }[job.status];
+  const finished = job.status === 'done' || job.status === 'failed';
+  res.type('html').send(`<!DOCTYPE html><html lang="it"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+${finished ? '' : '<meta http-equiv="refresh" content="4">'}
+<title>NoStream · Prepara sul server</title>
+<link rel="icon" href="/logo.svg" type="image/svg+xml">
+<style>
+body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#FDF6E9;color:#111;padding:28px 18px}
+.box{max-width:520px;margin:0 auto;background:#fff;border:3px solid #111;border-radius:8px;box-shadow:6px 6px 0 #111;padding:22px}
+h1{font-size:1.1rem;margin:0 0 6px;text-transform:uppercase}p{line-height:1.5;margin:10px 0}
+.bar{height:16px;border:2px solid #111;border-radius:99px;overflow:hidden;background:#FDF6E9}.bar div{height:100%;background:#3A86FF}
+.ok{color:#118844;font-weight:800}.ko{color:#c22;font-weight:800}
+@media (prefers-color-scheme:dark){body{background:#171512;color:#F5F1E8}.box{background:#221f1a;border-color:#F5F1E8;box-shadow:6px 6px 0 #000}.bar{border-color:#F5F1E8;background:#171512}}
+</style></head><body><div class="box">
+<img src="/logo.svg" alt="" width="48" height="48">
+<h1>📦 Prepara sul server</h1>
+<p><strong>${escapeHtml(job.title || job.filename)}</strong></p>
+<div class="bar"><div style="width:${job.status === 'done' ? 100 : pct}%"></div></div>
+<p class="${job.status === 'done' ? 'ok' : job.status === 'failed' ? 'ko' : ''}">${escapeHtml(state)}</p>
+<p>Puoi chiudere questa pagina: il download continua sul server. Torna su Nuvio e riapri la lista degli stream: quando è pronto trovi la voce <strong>✅ Pronto sul server</strong>, che si scarica in pochi secondi.</p>
+</div></body></html>`);
+});
 
 // ---- Stremio/Nuvio addon (NoStream installato come addon dentro Nuvio) ----
 //
@@ -389,14 +504,15 @@ app.get('/stream/:type/:id.json', addonCors, asyncRoute(async (req, res) => {
   const entries = await rankDownloadable(downloadable);
 
   const base = `${publicProtocol(req)}://${req.get('host')}`;
-  const result = entries.map(s => {
+  const result = entries.flatMap(s => {
     const payload = {
       addonName: s.addonName,
       sourceUrl: s.url || undefined,
       externalUrl: s.externalUrl || undefined,
       headers: s.headers,
       streamTitle: s.title,
-      title: label
+      title: label,
+      vid: id
     };
     // Nuvio dà al file scaricato l'estensione che trova in questo URL.
     const ext = s.kind === 'direct'
@@ -406,18 +522,53 @@ app.get('/stream/:type/:id.json', addonCors, asyncRoute(async (req, res) => {
     const downloadUrl = `${base}/api/download/${encodeDownloadPayload(payload)}/${cosmeticFilename}`;
     const provider = s.externalUrl ? extractor.providerFromUrl(s.externalUrl) : null;
     const details = s.kind === 'direct'
-      ? `File diretto${s.size ? ` · ${formatSize(s.size)}` : ''} · download a velocità piena, riprendibile`
+      ? `File diretto${s.size ? ` · ${formatSize(s.size)}` : ''} · scaricato sul server e passato al telefono man mano, riprendibile`
       : 'HLS · convertito al volo sul server: dimensione nota solo a conversione finita, riprendibile';
     const hints = { filename: `${label}${ext}` };
     if (s.size) hints.videoSize = s.size;
-    return {
-      // Il "name" è anche il criterio con cui Nuvio ordina gli stream di un addon:
-      // "⬇️" viene prima di "🔄", così i file diretti restano in cima in ogni caso.
+    const origin = `${s.addonNames.join(', ')}${provider ? ` · ${provider}` : ''}`;
+
+    // Il "name" è anche il criterio con cui Nuvio ordina gli stream di un addon:
+    // "⏳"/"✅" (sul server) prima di "⬇️", poi "📦" e infine "🔄".
+    const job = s.kind === 'direct' ? prepared.get(prepared.keyFor(payload)) : null;
+    if (job && job.status !== 'failed') {
+      const view = prepared.publicView(job);
+      const pct = job.size ? Math.floor((job.written / job.size) * 100) : 0;
+      const ready = job.status === 'done';
+      const readyHints = { filename: `${label}${ext}` };
+      if (job.size) readyHints.videoSize = job.size;
+      return [{
+        name: ready ? '✅ Pronto sul server' : `⏳ Sul server ${pct}%`,
+        title: [
+          ready
+            ? `Già scaricato sul server${job.size ? ` · ${formatSize(job.size)}` : ''} · arriva in pochi secondi dalla rete di casa`
+            : 'In preparazione sul server: puoi già scaricarlo, il resto arriva man mano',
+          s.title,
+          origin
+        ].join('\n'),
+        url: `${base}${view.path.replace(/[^/]+$/, cosmeticFilename)}`,
+        behaviorHints: readyHints
+      }];
+    }
+
+    const items = [{
       name: s.kind === 'direct' ? '⬇️ Scaricabile' : '🔄 Da convertire',
-      title: [details, s.title, `${s.addonNames.join(', ')}${provider ? ` · ${provider}` : ''}`].join('\n'),
+      title: [details, s.title, origin].join('\n'),
       url: downloadUrl,
       behaviorHints: hints
-    };
+    }];
+    if (s.kind === 'direct') {
+      items.push({
+        name: '📦 Prepara sul server',
+        title: [
+          'Scarica il file sul server senza usare il telefono; quando è pronto lo trovi qui come "✅ Pronto sul server"',
+          s.title,
+          origin
+        ].join('\n'),
+        externalUrl: `${base}/prepare/${encodeDownloadPayload(payload)}`
+      });
+    }
+    return items;
   });
 
   res.json({ streams: result });

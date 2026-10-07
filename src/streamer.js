@@ -615,8 +615,16 @@ async function serveExistingHls(sourceKey, req, res) {
 module.exports = {
   prepareDownload,
   streamDownload,
+  streamDirect,
   serveExistingHls,
   sanitizeFilename,
   detectType,
-  guessExtension
+  guessExtension,
+  contentDisposition,
+  // usati anche dalla preparazione sul server (src/prepared.js)
+  fetchUpstream,
+  discard,
+  parseContentRange,
+  UPSTREAM_STALL_MS,
+  RESOLVABLE_STATUSES
 };
