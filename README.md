@@ -1,4 +1,8 @@
-# NoStream
+<p align="center">
+  <img src="public/logo.svg" alt="" width="128">
+</p>
+
+<h1 align="center">NoStream</h1>
 
 **Scarica invece di streamare.** NoStream è un piccolo server self-hosted (Node.js +
 ffmpeg) che prende gli stream trovati dagli addon Stremio/Nuvio e li trasforma in
@@ -16,6 +20,20 @@ Funziona in due modi:
 > Già noto come NuvioDL / nuvio-offline. Per compatibilità restano invariati il nome
 > dell'immagine Docker (`ghcr.io/katergaris/nuviodl`) e l'ID dell'addon
 > (`org.nuvio-offline`).
+
+<p align="center">
+  <img src="docs/screenshots/01-ricerca.png" alt="Risultati della ricerca" width="190">
+  <img src="docs/screenshots/02-episodio.png" alt="Scheda di una serie con gli stream di un episodio" width="190">
+  <img src="docs/screenshots/03-selezione.png" alt="Selezione di più episodi da mettere in coda" width="190">
+  <img src="docs/screenshots/04-coda.png" alt="Coda download con l'avanzamento" width="190">
+</p>
+
+<p align="center"><sub>Ricerca · stream di un episodio (il consigliato in verde) · selezione di più episodi · coda con avanzamento.
+Titoli e locandine sono inventati, generati per la demo.</sub></p>
+
+<p align="center">
+  <img src="docs/screenshots/05-desktop.png" alt="Scheda di una serie da desktop, tema scuro" width="780">
+</p>
 
 > **Uso previsto**: scaricare solo contenuti per cui hai i diritti di visione. NoStream
 > non fornisce contenuti propri: interroga gli addon che configuri tu ed effettua un

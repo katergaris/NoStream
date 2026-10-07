@@ -92,6 +92,7 @@ const VIEWS = { '': 'search', '#coda': 'queue', '#impostazioni': 'settings', '#t
 function route() {
   let view = VIEWS[location.hash] || 'search';
   if (view === 'detail' && !state.item) view = 'search';
+  if (view === 'queue' || view === 'settings') window.scrollTo(0, 0);
   $all('.view').forEach(v => v.classList.toggle('active', v.id === `view-${view}`));
   $all('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.view === view));
   if (view === 'settings') {

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>NoStream</title>
+  <!-- Il "play" dello streaming ruotato verso il basso diventa una freccia di download che
+       finisce nel vassoio: niente stream, si scarica. -->
+  <rect x="64" y="64" width="408" height="408" rx="64" fill="#111"/>
+  <rect x="40" y="40" width="408" height="408" rx="64" fill="#FFD93D" stroke="#111" stroke-width="24"/>
+  <path d="M150 136 H338 L244 262 Z" fill="#111" stroke="#111" stroke-width="28" stroke-linejoin="round"/>
+  <rect x="134" y="306" width="220" height="56" rx="14" fill="#FF3EA5" stroke="#111" stroke-width="20"/>
+</svg>
