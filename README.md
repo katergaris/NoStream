@@ -184,11 +184,25 @@ node server.js
 ## Primo avvio
 
 1. Apri `http://<ip-del-server>:4321` dal browser.
-2. Scheda **Impostazioni**:
+2. **Impostazioni** (icona ⚙ in alto):
    - incolla la **TMDB API Key** e salva;
    - in **Addon Stremio** aggiungi gli addon sorgente (nome + URL del `manifest.json`).
-3. Scheda **Cerca**: cerca un titolo, scegli stagione/episodio, premi su uno stream per
-   scaricarlo nel browser.
+3. Cerca un titolo dalla barra in alto. Nella scheda di una serie scegli la stagione dai
+   pulsanti in alto e tocca un episodio: gli stream compaiono subito sotto, con il
+   consigliato in evidenza. **⬇ Scarica** lo scarica subito nel browser.
+
+### Coda download (solo piattaforma web)
+
+Con **＋ Coda: tutta la stagione** (oppure spuntando solo alcuni episodi, o con **＋ Coda**
+su un singolo stream) gli elementi finiscono nella coda (icona ☰). La coda scarica **un
+elemento alla volta**: per ognuno cerca gli stream al momento, prende il migliore (file
+diretto con dimensione nota, poi HLS) e, se fallisce, prova da solo il successivo. Il
+server segnala quando l'invio di un file è finito e la coda passa al prossimo.
+
+- La coda vive nel browser del dispositivo: **la pagina deve restare aperta** finché non
+  ha finito (lo schermo resta acceso da solo mentre lavora, dove il browser lo consente).
+- Al primo passaggio il browser può chiedere di consentire i **download multipli** per il
+  sito: va accettato, altrimenti dal secondo episodio in poi i download vengono bloccati.
 
 Tutte le impostazioni finiscono in `config.json`: nessun bisogno di modificarlo a mano.
 
@@ -293,6 +307,7 @@ src/config.js      caricamento/scrittura di config.json
 src/addons.js      ricerca TMDB e interrogazione degli addon sorgente
 src/extractor.js   risoluzione degli externalUrl "scraper" (css, dd, gx, sp3, voe)
 src/streamer.js    download: proxy con Range per i file diretti, conversione HLS su disco
+src/progress.js    avanzamento dei download avviati dalla coda web
 public/            frontend statico (HTML/CSS/JS vanilla)
 ```
 
@@ -303,7 +318,8 @@ public/            frontend statico (HTML/CSS/JS vanilla)
 | GET | `/manifest.json` | Manifest dell'addon Stremio/Nuvio |
 | GET | `/stream/:type/:id.json` | Stream scaricabili per un titolo (protocollo Stremio) |
 | GET | `/api/download/:data/:filename` | Download (`data` = JSON in base64url con `sourceUrl`/`externalUrl`, `headers`, `title`; `filename` è solo cosmetico, Nuvio ne usa l'estensione). Supporta `Range` |
-| GET | `/api/download?data=` | Come sopra, senza estensione nel path (usato dalla web UI) |
+| GET | `/api/download?data=` | Come sopra, senza estensione nel path (usato dalla web UI). Con `&dl=<id>` l'avanzamento viene tracciato |
+| GET | `/api/progress?ids=` | Avanzamento dei download tracciati (byte inviati, totale, stato), usato dalla coda web |
 | GET | `/api/search?query=` | Ricerca titoli su TMDB |
 | GET | `/api/seasons/:tmdbId` | Stagioni di una serie |
 | GET | `/api/episodes/:tmdbId/:season` | Episodi di una stagione |
