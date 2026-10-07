@@ -9,7 +9,7 @@ const progress = require('./src/progress');
 
 const cfg = config.get();
 
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.7.1';
 
 const app = express();
 app.set('etag', false);
@@ -320,6 +320,7 @@ app.get('/manifest.json', addonCors, (req, res) => {
     id: ADDON_ID,
     version: '1.0.0',
     name: 'NoStream',
+    logo: `${publicProtocol(req)}://${req.get('host')}/logo-256.png`,
     description: 'Scarica sul dispositivo i contenuti trovati dagli addon configurati in NoStream',
     resources: ['stream'],
     types: ['movie', 'series'],

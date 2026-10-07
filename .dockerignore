@@ -4,3 +4,4 @@ psw
 *.log
 .git
 node_modules
+docs

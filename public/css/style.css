@@ -73,15 +73,7 @@ button { font-family: inherit; }
 }
 
 .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; flex-shrink: 0; }
-.logo-mark {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 40px; height: 40px;
-  background: var(--yellow);
-  border: var(--bw) solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: 4px 4px 0 var(--shadow-color);
-  font-size: 1.2rem;
-}
+.logo-mark { width: 44px; height: 44px; display: block; }
 .logo-text { font-size: 1.15rem; font-weight: 900; letter-spacing: 0.02em; line-height: 1; }
 .logo-text span { display: block; font-size: 0.6em; color: var(--ink-dim); letter-spacing: 0.15em; font-weight: 700; margin-top: 2px; }
 
@@ -186,6 +178,8 @@ input[type="checkbox"]:checked::after { content: '✓'; font-weight: 900; color:
   overflow: hidden; cursor: pointer;
   transition: transform 0.1s, box-shadow 0.1s;
   text-align: left; padding: 0; color: inherit; font: inherit;
+  /* è un <button>: senza flex il contenuto verrebbe centrato in verticale */
+  display: flex; flex-direction: column; justify-content: flex-start;
 }
 .card:hover { transform: translate(-2px, -2px); box-shadow: 7px 7px 0 var(--shadow-color); }
 .card:active { transform: translate(1px, 1px); box-shadow: 3px 3px 0 var(--shadow-color); }
@@ -300,6 +294,7 @@ input[type="checkbox"]:checked::after { content: '✓'; font-weight: 900; color:
   display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;
 }
 .action-bar .btn { flex: 1 1 200px; max-width: 420px; }
+.action-bar[hidden] { display: none; }
 
 /* ---- Coda ---- */
 
