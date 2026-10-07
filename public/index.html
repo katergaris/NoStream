@@ -2,38 +2,70 @@
 <html lang="it">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>NoStream</title>
 <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
 <header class="topbar">
-  <div class="logo">
-    <span class="logo-mark">⬇</span>
-    <h1>NO<span>STREAM</span></h1>
+  <div class="topbar-row">
+    <a href="#" class="logo" aria-label="NoStream, torna alla ricerca">
+      <span class="logo-mark">⬇</span>
+      <span class="logo-text">NO<span>STREAM</span></span>
+    </a>
+    <form id="search-form" class="search-bar" role="search">
+      <input type="search" id="search-input" placeholder="Cerca un film o una serie…" autocomplete="off" enterkeyhint="search">
+      <button type="submit" class="btn btn-accent" aria-label="Cerca">🔍</button>
+    </form>
+    <nav class="nav">
+      <a href="#coda" class="nav-btn" data-view="queue" aria-label="Coda download">
+        <span aria-hidden="true">☰</span><span class="nav-label">CODA</span>
+        <span id="queue-badge" class="badge" hidden>0</span>
+      </a>
+      <a href="#impostazioni" class="nav-btn" data-view="settings" aria-label="Impostazioni">
+        <span aria-hidden="true">⚙</span><span class="nav-label">IMPOSTAZIONI</span>
+      </a>
+    </nav>
   </div>
-  <nav class="tabs">
-    <button class="tab-btn active" data-tab="search">🔍 CERCA</button>
-    <button class="tab-btn" data-tab="settings">⚙ IMPOSTAZIONI</button>
-  </nav>
-  <span id="app-version" class="version-badge" title="Versione del server">…</span>
 </header>
 
 <main>
-  <section id="tab-search" class="tab-panel active">
-    <form id="search-form" class="search-bar">
-      <input type="text" id="search-input" placeholder="Cerca un film o una serie TV…" autocomplete="off">
-      <button type="submit" class="btn btn-accent">CERCA</button>
-    </form>
-    <div id="search-results" class="grid"></div>
-
-    <div id="detail-panel" class="detail-panel" hidden>
-      <button id="detail-back" class="btn btn-ghost">&larr; TORNA AI RISULTATI</button>
-      <div id="detail-content"></div>
+  <!-- Ricerca -->
+  <section id="view-search" class="view active">
+    <div id="search-results" class="grid">
+      <div class="empty">Cerca un titolo qui sopra per iniziare.</div>
     </div>
   </section>
 
-  <section id="tab-settings" class="tab-panel">
+  <!-- Scheda film / serie -->
+  <section id="view-detail" class="view">
+    <button id="detail-back" class="btn btn-ghost back-btn">&larr; Risultati</button>
+    <div id="detail-content"></div>
+  </section>
+
+  <!-- Coda -->
+  <section id="view-queue" class="view">
+    <div class="queue-head">
+      <div>
+        <h2>Coda download</h2>
+        <p id="queue-summary" class="hint">La coda è vuota.</p>
+      </div>
+      <div class="queue-controls">
+        <button id="queue-toggle" class="btn btn-accent">▶ AVVIA</button>
+        <button id="queue-clear-done" class="btn">TOGLI COMPLETATI</button>
+        <button id="queue-clear-all" class="btn btn-danger">SVUOTA</button>
+      </div>
+    </div>
+    <p class="note">
+      I download partono <strong>uno alla volta</strong> nel browser di questo dispositivo:
+      tieni aperta questa pagina finché la coda non è finita. Se il browser chiede di
+      consentire <em>download multipli</em>, accetta.
+    </p>
+    <div id="queue-list" class="queue-list"></div>
+  </section>
+
+  <!-- Impostazioni -->
+  <section id="view-settings" class="view">
     <div class="panel-block">
       <h2>🔑 API TMDB</h2>
       <p class="hint">
@@ -74,9 +106,12 @@
       </form>
       <div id="addon-list" class="list"></div>
     </div>
+
+    <p class="version-line">NoStream <span id="app-version">…</span></p>
   </section>
 </main>
 
+<div id="action-bar" class="action-bar" hidden></div>
 <div id="toast" class="toast" hidden></div>
 
 <script src="/js/app.js"></script>

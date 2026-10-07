@@ -5,10 +5,11 @@ const config = require('./src/config');
 const addons = require('./src/addons');
 const streamer = require('./src/streamer');
 const extractor = require('./src/extractor');
+const progress = require('./src/progress');
 
 const cfg = config.get();
 
-const APP_VERSION = '1.6.1';
+const APP_VERSION = '1.7.0';
 
 const app = express();
 app.set('etag', false);
@@ -74,7 +75,11 @@ app.get('/api/streams', asyncRoute(async (req, res) => {
   }
 
   const { streams, errors } = await addons.getStreamsForAllAddons(addonList, stremioType, stremioId);
-  res.json({ imdbId, stremioId, streams, errors });
+  // Stessi criteri dell'addon per Nuvio: diretti con dimensione nota in cima, poi HLS;
+  // i non supportati (torrent) in fondo, solo per informazione.
+  const ranked = await rankDownloadable(streams.filter(s => s.supported));
+  const unsupported = streams.filter(s => !s.supported);
+  res.json({ imdbId, stremioId, streams: [...ranked, ...unsupported], errors });
 }));
 
 // ---- Impostazioni ----
@@ -182,11 +187,23 @@ async function handleDownload(rawData, req, res) {
 // guardando l'estensione nell'URL — un endpoint puramente query-string come
 // /api/download?data=... non ne ha nessuna e viene scartato. Il segmento finale è solo
 // cosmetico: il nome file vero per l'header Content-Disposition è ricalcolato lato server.
+// Download avviati dalla coda web: "?dl=<id>" ne traccia l'avanzamento (vedi /api/progress).
+function trackDownload(req, res) {
+  if (req.query.dl && req.method !== 'HEAD') progress.track(String(req.query.dl).slice(0, 64), res);
+}
+
+app.get('/api/progress', (req, res) => {
+  const ids = String(req.query.ids || '').split(',').filter(Boolean).slice(0, 50);
+  res.json(progress.get(ids));
+});
+
 app.get('/api/download/:data/:filename', asyncRoute(async (req, res) => {
+  trackDownload(req, res);
   await handleDownload(req.params.data, req, res);
 }));
 
 app.get('/api/download', asyncRoute(async (req, res) => {
+  trackDownload(req, res);
   await handleDownload(req.query.data, req, res);
 }));
 
@@ -262,6 +279,37 @@ function formatSize(bytes) {
   return gb >= 1 ? `${gb.toFixed(1)} GB` : `${Math.round(bytes / 1024 ** 2)} MB`;
 }
 
+// Stream scaricabili deduplicati e ordinati dal migliore: usato sia dall'addon per Nuvio
+// sia dalla piattaforma web (la coda prende il primo e, se fallisce, il successivo).
+async function rankDownloadable(downloadable) {
+  // Lo stesso link può arrivare da più addon (es. più installazioni dello stesso addon):
+  // ne teniamo uno solo, con i nomi di tutti gli addon che lo hanno proposto.
+  const unique = new Map();
+  for (const s of downloadable) {
+    const key = s.url || s.externalUrl;
+    const existing = unique.get(key);
+    if (existing) {
+      if (!existing.addonNames.includes(s.addonName)) existing.addonNames.push(s.addonName);
+    } else {
+      unique.set(key, { ...s, addonNames: [s.addonName], kind: streamKind(s) });
+    }
+  }
+  const entries = [...unique.values()];
+
+  // Per i file diretti chiediamo subito la dimensione alla fonte: Nuvio la mostra come
+  // badge (behaviorHints.videoSize) e conferma che il link è davvero scaricabile.
+  await Promise.all(entries.filter(e => e.kind === 'direct').map(async e => {
+    e.size = await probeDirectSize(e);
+  }));
+
+  // File diretti prima (scaricano a velocità piena, con dimensione e ripresa), poi gli HLS
+  // (conversione al volo, senza dimensione). Tra i diretti, quelli con dimensione nota
+  // davanti; l'ordine originale degli addon resta come criterio finale.
+  const rank = e => (e.kind === 'direct' ? (e.size ? 0 : 1) : 2);
+  entries.sort((a, b) => rank(a) - rank(b));
+  return entries;
+}
+
 function parseStremioId(id) {
   const [imdbId, season, episode] = id.split(':');
   return { imdbId, season, episode };
@@ -305,31 +353,7 @@ app.get('/stream/:type/:id.json', addonCors, asyncRoute(async (req, res) => {
     // TMDB non configurata/raggiungibile: usa l'id grezzo come titolo del file
   }
 
-  // Lo stesso link può arrivare da più addon (es. più installazioni dello stesso addon):
-  // ne teniamo uno solo, con i nomi di tutti gli addon che lo hanno proposto.
-  const unique = new Map();
-  for (const s of downloadable) {
-    const key = s.url || s.externalUrl;
-    const existing = unique.get(key);
-    if (existing) {
-      if (!existing.addonNames.includes(s.addonName)) existing.addonNames.push(s.addonName);
-    } else {
-      unique.set(key, { ...s, addonNames: [s.addonName], kind: streamKind(s) });
-    }
-  }
-  const entries = [...unique.values()];
-
-  // Per i file diretti chiediamo subito la dimensione alla fonte: Nuvio la mostra come
-  // badge (behaviorHints.videoSize) e conferma che il link è davvero scaricabile.
-  await Promise.all(entries.filter(e => e.kind === 'direct').map(async e => {
-    e.size = await probeDirectSize(e);
-  }));
-
-  // File diretti prima (scaricano a velocità piena, con dimensione e ripresa), poi gli HLS
-  // (conversione al volo, senza dimensione). Tra i diretti, quelli con dimensione nota
-  // davanti; l'ordine originale degli addon resta come criterio finale.
-  const rank = e => (e.kind === 'direct' ? (e.size ? 0 : 1) : 2);
-  entries.sort((a, b) => rank(a) - rank(b));
+  const entries = await rankDownloadable(downloadable);
 
   const base = `${publicProtocol(req)}://${req.get('host')}`;
   const result = entries.map(s => {
