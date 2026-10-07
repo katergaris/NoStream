@@ -209,6 +209,22 @@ node server.js
    pulsanti in alto e tocca un episodio: gli stream compaiono subito sotto, con il
    consigliato in evidenza. **⬇ Scarica** lo scarica subito nel browser.
 
+### Preparazione sul server
+
+I file diretti passano dal disco del server: NoStream li scarica a piena velocità con una
+sola connessione verso la fonte (ricollegandosi da solo se cade) e intanto li passa al
+dispositivo. Le riprese arrivano così dal disco, alla velocità della rete di casa.
+
+- **In Nuvio** ogni file diretto compare due volte: **⬇️ Scaricabile** (scarica subito) e
+  **📦 Prepara sul server**, che apre una pagina nel browser e scarica il file solo sul
+  server. Quando è pronto la voce diventa **✅ Pronto sul server** (o **⏳ Sul server N%**
+  mentre è in corso) e il download sul telefono dura pochi secondi.
+- **Nella web app** c'è il pulsante **📦 SERVER** su ogni stream e, nella Coda, la sezione
+  **Sul server** con avanzamento, download ed eliminazione.
+- I file stanno in `data/prepared` (nel container `/app/data`, da montare come volume) e si
+  cancellano da soli 3 giorni dopo l'ultimo uso. Prima di iniziare NoStream controlla che
+  resti almeno 1 GB libero.
+
 ### Coda download (solo piattaforma web)
 
 Con **＋ Coda: tutta la stagione** (oppure spuntando solo alcuni episodi, o con **＋ Coda**
@@ -321,6 +337,9 @@ L'immagine viene ricompilata da GitHub Actions a ogni push su `main`.
   dal punto raggiunto. Non riaprire invece lo stream dalla scheda dell'episodio, perché
   Nuvio cancella il file parziale e ricomincia da zero.
 
+  Aiuta molto la [preparazione sul server](#preparazione-sul-server): con il file già
+  pronto il download in Nuvio dura pochi secondi e non fa in tempo a fermarsi.
+
   In alternativa, per scaricare senza interventi (anche un'intera stagione) c'è la
   [coda della web app](#coda-download-solo-piattaforma-web), che usa il gestore download
   del browser.
@@ -339,6 +358,7 @@ src/addons.js      ricerca TMDB e interrogazione degli addon sorgente
 src/extractor.js   risoluzione degli externalUrl "scraper" (css, dd, gx, sp3, voe)
 src/streamer.js    download: proxy con Range per i file diretti, conversione HLS su disco
 src/progress.js    avanzamento dei download avviati dalla coda web
+src/prepared.js    preparazione dei file diretti sul disco del server
 public/            frontend statico (HTML/CSS/JS vanilla)
 ```
 
