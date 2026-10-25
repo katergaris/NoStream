@@ -15,7 +15,7 @@
   "kind.tv": "Serie TV",
   "kind.direct": "File diretto",
   "kind.hls": "HLS, da convertire",
-  "search.placeholder": "Cerca un film o una serie",
+  "search.placeholder": "Cerca un titolo o incolla un link",
   "search.clear": "Cancella la ricerca",
   "search.loading": "Ricerca in corso…",
   "search.noResults": "Nessun risultato",
@@ -32,7 +32,7 @@
     "other": "ancora {n} in coda"
   },
   "home.emptyTitle": "Cosa vuoi scaricare?",
-  "home.emptyText": "Cerca un film o una serie qui sopra e tocca ↓ per scaricarlo.",
+  "home.emptyText": "Cerca un film o una serie e tocca ↓ per scaricarlo. Puoi anche incollare il link di un video o di una playlist di YouTube.",
   "detail.noOverview": "Nessuna descrizione disponibile.",
   "detail.seasons": {
     "one": "1 stagione",
@@ -236,5 +236,57 @@
   "welcome.nuvioTitle": "Usalo anche in Nuvio",
   "welcome.nuvioText": "Facoltativo: installa NoStream come addon in Nuvio per scaricare direttamente dall'app.",
   "welcome.finish": "Inizia",
-  "status.doneOnly": "Scaricato ({where})"
+  "status.doneOnly": "Scaricato ({where})",
+  "settings.linkVideos": "Video da link",
+  "settings.linkVideosValue": "YouTube e altri",
+  "status.linkStarting": "Sul server · avvio di yt-dlp…",
+  "status.linkOf": "Sul server · {of}",
+  "link.reading": "Leggo il link…",
+  "link.readingHint": "Per una playlist lunga può servire qualche secondo.",
+  "link.failed": "Link non scaricabile: {msg}",
+  "link.site": "Link",
+  "link.playlist": "playlist",
+  "link.video": "video",
+  "link.videos": {
+    "one": "1 video",
+    "other": "{n} video"
+  },
+  "link.hoursMinutes": "{h} h {m} min",
+  "link.modeVideo": "Video",
+  "link.modeAudio": "Solo audio",
+  "link.audioShort": "solo audio",
+  "link.downloadPlaylist": {
+    "one": "Scarica playlist (1)",
+    "other": "Scarica playlist ({n})"
+  },
+  "link.downloadMissing": {
+    "one": "Scarica il video mancante",
+    "other": "Scarica i {n} mancanti"
+  },
+  "link.downloadVideo": "Scarica video",
+  "link.downloadAudio": "Scarica audio",
+  "link.allQueued": "Già nei download",
+  "link.selectVideos": "Scegli video",
+  "link.selectHint": "Tocca i video da scaricare",
+  "link.selectDownload": {
+    "one": "Scarica 1 video",
+    "other": "Scarica {n} video"
+  },
+  "ytdlp.lead": "Incolla nella ricerca il link di un video o di una playlist (YouTube e gli altri siti supportati da yt-dlp). Il server scarica il file e poi lo passa al dispositivo.",
+  "ytdlp.format": "Formato",
+  "ytdlp.maxHeight": "Qualità massima video",
+  "ytdlp.audioFormat": "Formato solo audio",
+  "ytdlp.embedSubs": "Incorpora i sottotitoli",
+  "ytdlp.numberFiles": "Numera i file della playlist",
+  "ytdlp.numberFilesHint": "«01 - Titolo», così restano in ordine",
+  "ytdlp.version": "Versione",
+  "ytdlp.autoUpdate": "Aggiorna da solo",
+  "ytdlp.autoUpdateHint": "All'avvio e una volta al giorno",
+  "ytdlp.update": "Aggiorna ora",
+  "ytdlp.updateNow": "Controlla",
+  "ytdlp.updating": "Aggiorno…",
+  "ytdlp.upToDate": "yt-dlp è già aggiornato ({v})",
+  "ytdlp.updated": "yt-dlp aggiornato alla {v}",
+  "ytdlp.missing": "non installato",
+  "ytdlp.note": "YouTube cambia spesso: se i download smettono di funzionare, quasi sempre basta aggiornare yt-dlp. Scarica solo contenuti che hai il diritto di tenere."
 }

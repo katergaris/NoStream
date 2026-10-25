@@ -176,6 +176,8 @@ body.has-selbar main { padding-bottom: calc(var(--tabbar-h) + var(--safe-b) + 88
 /* ---------- Scheda titolo ---------- */
 .hero { display: flex; gap: 16px; margin-top: 4px; }
 .hero .poster { width: 104px; flex: none; }
+.hero .poster.wide { width: 150px; aspect-ratio: 16 / 9; align-self: flex-start; }
+.link-hero + .seg { margin-top: 16px; }
 .hero h2 { font-size: 21px; line-height: 1.2; letter-spacing: -0.01em; }
 .meta { color: var(--muted); font-size: 13px; margin-top: 4px; }
 .overview { font-size: 13.5px; color: var(--muted); margin-top: 8px; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; }
