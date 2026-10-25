@@ -8,6 +8,7 @@ const extractor = require('./src/extractor');
 const progress = require('./src/progress');
 const prepared = require('./src/prepared');
 const ytdlp = require('./src/ytdlp');
+const nuvio = require('./src/nuvio');
 
 const cfg = config.get();
 
@@ -23,6 +24,7 @@ async function resolvePayloadSource(p, { fresh = false } = {}) {
 prepared.setResolver(resolvePayloadSource);
 prepared.init();
 ytdlp.init();
+nuvio.init();
 
 // Nome del file preparato: titolo + estensione della fonte (gli scraper danno .mp4).
 function preparedFilename(p) {
@@ -131,7 +133,11 @@ app.post('/api/settings', (req, res) => {
 // ---- Addons CRUD ----
 
 app.get('/api/addons', (req, res) => {
-  res.json({ addons: config.listAddons() });
+  // Gli URL degli addon presi da Nuvio possono contenere chiavi personali: solo il dominio.
+  const addons = config.listAddons().map(a => (a.origin === 'nuvio'
+    ? { ...a, manifestUrl: (() => { try { return `${new URL(a.manifestUrl).origin}/…`; } catch { return '…'; } })() }
+    : a));
+  res.json({ addons });
 });
 
 // Legge il manifest di un addon: serve a ricavarne il nome e a dire se risponde e quanto
@@ -175,6 +181,13 @@ app.get('/api/addons/:id/check', asyncRoute(async (req, res) => {
 }));
 
 app.delete('/api/addons/:id', (req, res) => {
+  // Gli addon presi da Nuvio non si cancellano (tornerebbero alla prossima lettura):
+  // si escludono dalle fonti.
+  const fromNuvio = config.listAddons().find(a => a.id === req.params.id && a.origin === 'nuvio');
+  if (fromNuvio) {
+    nuvio.setUsed(req.params.id, false);
+    return res.status(204).end();
+  }
   const removed = config.removeAddon(req.params.id);
   if (!removed) return res.status(404).json({ error: 'Addon non trovato' });
   res.status(204).end();
@@ -341,6 +354,33 @@ app.get('/api/prepared/:key/:filename', asyncRoute(async (req, res) => {
     res.status(502).json({ error: job.error || 'Preparazione non riuscita' });
   }
 }));
+
+// ---- Account Nuvio (addon come fonti) ----
+
+function nuvioRoute(fn) {
+  return asyncRoute(async (req, res) => {
+    try {
+      res.json(await fn(req));
+    } catch (e) {
+      res.status(e.auth ? 401 : 502).json({ error: e.message });
+    }
+  });
+}
+
+app.get('/api/nuvio', (req, res) => res.json(nuvio.status()));
+app.post('/api/nuvio/login', nuvioRoute(req => {
+  const { email, password } = req.body || {};
+  if (!email || !password) {
+    const e = new Error('Email e password richieste');
+    e.auth = true;
+    throw e;
+  }
+  return nuvio.login(email, password);
+}));
+app.post('/api/nuvio/sync', nuvioRoute(() => nuvio.sync()));
+app.post('/api/nuvio/profile', nuvioRoute(req => nuvio.setProfile((req.body || {}).profileId)));
+app.post('/api/nuvio/addons/:id', nuvioRoute(req => nuvio.setUsed(req.params.id, !!(req.body || {}).used)));
+app.post('/api/nuvio/logout', nuvioRoute(() => nuvio.logout()));
 
 // ---- Video da link (yt-dlp) ----
 

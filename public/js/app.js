@@ -215,6 +215,7 @@ const ROUTES = {
   '#impostazioni/tmdb': 'settings',
   '#impostazioni/avanzate': 'settings',
   '#impostazioni/link': 'settings',
+  '#impostazioni/account-nuvio': 'settings',
   '#link': 'link',
   '#benvenuto': 'welcome'
 };
@@ -1602,6 +1603,11 @@ async function loadServerSettings() {
   return state.settings;
 }
 
+async function loadNuvio() {
+  state.nuvio = await api('/nuvio');
+  return state.nuvio;
+}
+
 async function loadAddons() {
   const { addons } = await api('/addons');
   state.addons = addons;
@@ -1616,6 +1622,7 @@ function renderSettings(page) {
   if (page === 'tmdb') return renderTmdbPage(view);
   if (page === 'avanzate') return renderAdvancedPage(view);
   if (page === 'link') return renderLinkSettingsPage(view);
+  if (page === 'account-nuvio') return renderNuvioAccountPage(view);
 
   const s = state.settings || {};
   const rerender = () => renderSettings('');
@@ -1635,6 +1642,9 @@ function renderSettings(page) {
   const n = state.addons ? state.addons.length : null;
   view.appendChild(el('div', { class: 'group' }, [
     linkRow(t('settings.addons'), n === null ? '' : el('span', { class: n ? 'chip ok' : 'chip warn' }, t('settings.addonsCount', { n })), '#impostazioni/addon'),
+    linkRow(t('settings.nuvioAccount'), state.nuvio && state.nuvio.connected
+      ? el('span', { class: 'chip ok' }, t('nuvioAcc.connectedChip'))
+      : state.nuvio && state.nuvio.error ? el('span', { class: 'chip err' }, t('nuvioAcc.errorChip')) : t('nuvioAcc.notConnected'), '#impostazioni/account-nuvio'),
     linkRow(t('settings.nuvio'), t('settings.nuvioValue'), '#impostazioni/nuvio')
   ]));
 
@@ -1651,8 +1661,8 @@ function renderSettings(page) {
 
   view.appendChild(el('p', { class: 'version-line' }, `NoStream ${s.version ? 'v' + s.version : ''}`));
 
-  if (!state.settings || !state.addons) {
-    Promise.all([loadServerSettings(), loadAddons()]).then(() => { if (location.hash === '#impostazioni') rerender(); }).catch(err => toast(err.message, true));
+  if (!state.settings || !state.addons || !state.nuvio) {
+    Promise.all([loadServerSettings(), loadAddons(), loadNuvio()]).then(() => { if (location.hash === '#impostazioni') rerender(); }).catch(err => toast(err.message, true));
   }
 }
 
@@ -1701,11 +1711,12 @@ async function fillAddonList(list, after) {
   for (const a of addons) {
     const status = el('span', { class: 'chip' }, t('addons.checking'));
     list.appendChild(el('div', { class: 'set' }, [
-      el('span', { style: 'min-width:0' }, [a.name, el('small', { style: 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, a.manifestUrl)]),
+      el('span', { style: 'min-width:0' }, [a.name, a.origin === 'nuvio' ? el('span', { class: 'chip acc', style: 'margin-left:6px' }, t('addons.fromNuvio')) : null,
+        el('small', { style: 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, a.origin === 'nuvio' ? hostOf(a.manifestUrl) : a.manifestUrl)]),
       el('span', { class: 'v', style: 'flex:none' }, [
         status,
         el('button', { class: 'icon-btn', type: 'button', 'aria-label': t('addons.remove', { name: a.name }), onclick: async () => {
-          if (!confirm(t('addons.confirmRemove', { name: a.name }))) return;
+          if (!confirm(t(a.origin === 'nuvio' ? 'addons.confirmUnuse' : 'addons.confirmRemove', { name: a.name }))) return;
           try { await api(`/addons/${a.id}`, { method: 'DELETE' }); }
           catch (err) { toast(err.message, true); }
           state.streamCache.clear();
@@ -1721,6 +1732,115 @@ async function fillAddonList(list, after) {
       if (!r.ok) status.title = r.error;
     }).catch(() => { status.className = 'chip err'; status.textContent = t('addons.down'); });
   }
+}
+
+// ---- Account Nuvio (gli addon di Nuvio come fonti)
+
+function hostOf(url) { try { return new URL(url).hostname; } catch { return url; } }
+
+const NUVIO_STATUS = {
+  usable: ['ok', 'nuvioAcc.st.usable'],
+  self: ['', 'nuvioAcc.st.self'],
+  noStreams: ['', 'nuvioAcc.st.noStreams'],
+  noMovies: ['', 'nuvioAcc.st.noMovies'],
+  noImdb: ['', 'nuvioAcc.st.noImdb'],
+  disabled: ['', 'nuvioAcc.st.disabled'],
+  duplicate: ['warn', 'nuvioAcc.st.duplicate'],
+  unreachable: ['err', 'nuvioAcc.st.unreachable']
+};
+
+function renderNuvioAccountPage(view) {
+  view.appendChild(subAppbar(t('settings.nuvioAccount')));
+  const n = state.nuvio;
+  if (!n) {
+    view.appendChild(el('div', { class: 'empty' }, t('common.loading')));
+    loadNuvio().then(() => renderSettings('account-nuvio')).catch(err => toast(err.message, true));
+    return;
+  }
+  const rerender = data => { state.nuvio = data; state.addons = null; renderSettings('account-nuvio'); };
+
+  if (!n.connected) {
+    view.appendChild(el('p', { class: 'lead' }, t('nuvioAcc.lead')));
+    if (n.error) view.appendChild(el('div', { class: 'note err' }, [icon('alert'), el('span', {}, n.error)]));
+    const email = el('input', { class: 'input', type: 'email', autocomplete: 'username', placeholder: 'nome@esempio.it', 'aria-label': t('nuvioAcc.email') });
+    if (n.email) email.value = n.email;
+    const pass = el('input', { class: 'input', type: 'password', autocomplete: 'current-password', 'aria-label': t('nuvioAcc.password') });
+    const btn = el('button', { class: 'btn primary block', type: 'submit', style: 'margin-top:16px' }, t('nuvioAcc.connect'));
+    view.appendChild(el('form', { onsubmit: async e => {
+      e.preventDefault();
+      btn.disabled = true;
+      btn.textContent = t('nuvioAcc.connecting');
+      try {
+        const data = await api('/nuvio/login', { method: 'POST', body: JSON.stringify({ email: email.value, password: pass.value }) });
+        pass.value = '';
+        toast(t('nuvioAcc.connected'));
+        rerender(data);
+      } catch (err) {
+        toast(err.message, true);
+        btn.disabled = false;
+        btn.textContent = t('nuvioAcc.connect');
+      }
+    } }, [
+      el('label', { class: 'field' }, [el('span', {}, t('nuvioAcc.email')), email]),
+      el('label', { class: 'field' }, [el('span', {}, t('nuvioAcc.password')), pass]),
+      btn
+    ]));
+    view.appendChild(el('div', { class: 'note' }, [icon('info'), el('span', {}, t('nuvioAcc.privacy'))]));
+    return;
+  }
+
+  if (n.error) view.appendChild(el('div', { class: 'note err' }, [icon('alert'), el('span', {}, n.error)]));
+  const syncBtn = el('button', { class: 'btn sm', type: 'button', onclick: async () => {
+    syncBtn.disabled = true;
+    syncBtn.textContent = t('nuvioAcc.syncing');
+    try { rerender(await api('/nuvio/sync', { method: 'POST' })); toast(t('nuvioAcc.synced')); }
+    catch (err) { toast(err.message, true); syncBtn.disabled = false; syncBtn.textContent = t('nuvioAcc.syncNow'); }
+  } }, t('nuvioAcc.syncNow'));
+  const profiles = n.profiles.length ? n.profiles : [{ index: 1, name: t('nuvioAcc.mainProfile') }];
+  view.appendChild(el('div', { class: 'group', style: 'margin-top:8px' }, [
+    el('div', { class: 'set' }, [el('span', {}, t('nuvioAcc.account')), el('span', { class: 'v nochev' }, n.email || '')]),
+    selectRow(t('nuvioAcc.profile'), String(n.profileId), profiles.map(p => [String(p.index), p.name || t('nuvioAcc.profileN', { n: p.index })]),
+      async v => { try { rerender(await api('/nuvio/profile', { method: 'POST', body: JSON.stringify({ profileId: Number(v) }) })); } catch (err) { toast(err.message, true); } }),
+    el('div', { class: 'set' }, [el('span', {}, [t('nuvioAcc.lastSync'), el('small', {}, n.lastSync ? formatDateTime(n.lastSync) : '—')]), syncBtn])
+  ]));
+
+  const used = n.addons.filter(a => a.used).length;
+  view.appendChild(el('div', { class: 'sec' }, t('nuvioAcc.addonsTitle', { n: n.addons.length, used })));
+  if (!n.addons.length) {
+    view.appendChild(el('div', { class: 'empty' }, t('nuvioAcc.noAddons')));
+  } else {
+    const group = el('div', { class: 'group' });
+    for (const a of n.addons.slice().sort((x, y) => (x.sortOrder ?? 0) - (y.sortOrder ?? 0))) {
+      const [cls, key] = NUVIO_STATUS[a.status] || ['', a.status];
+      const detail = [a.host, a.ms && a.status !== 'unreachable' ? t('addons.responds', { s: new Intl.NumberFormat(I18N.lang, { maximumFractionDigits: 1 }).format(a.ms / 1000) }) : null].filter(Boolean).join(' · ');
+      const right = a.status === 'usable'
+        ? (() => {
+          const input = el('input', { type: 'checkbox', role: 'switch', 'aria-label': t('nuvioAcc.use', { name: a.name }), onchange: async e => {
+            try { rerender(await api(`/nuvio/addons/${a.id}`, { method: 'POST', body: JSON.stringify({ used: e.target.checked }) })); }
+            catch (err) { toast(err.message, true); }
+          } });
+          input.checked = a.used;
+          return el('span', { class: 'switch' }, [input, el('span')]);
+        })()
+        : el('span', { class: `chip ${cls}`, title: a.error || '' }, t(key));
+      group.appendChild(el('div', { class: 'set' }, [
+        el('span', { style: 'min-width:0' }, [a.name || a.host, el('small', {}, a.status === 'usable' ? detail : [detail, a.error].filter(Boolean).join(' · '))]),
+        right
+      ]));
+    }
+    view.appendChild(group);
+    view.appendChild(el('div', { class: 'meta', style: 'margin:6px 4px 0' }, t('nuvioAcc.hint')));
+  }
+
+  view.appendChild(el('button', { class: 'btn danger block', type: 'button', style: 'margin-top:24px', onclick: async () => {
+    if (!confirm(t('nuvioAcc.confirmLogout'))) return;
+    try { rerender(await api('/nuvio/logout', { method: 'POST' })); } catch (err) { toast(err.message, true); }
+  } }, t('nuvioAcc.logout')));
+}
+
+function formatDateTime(ms) {
+  try { return new Intl.DateTimeFormat(I18N.lang, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(ms)); }
+  catch { return ''; }
 }
 
 // ---- Nuvio
@@ -1880,6 +2000,7 @@ function renderWelcome() {
   } else if (welcomeStep === 1) {
     view.appendChild(el('h2', {}, t('welcome.addonsTitle')));
     view.appendChild(el('p', { class: 'lead' }, t('welcome.addonsText')));
+    view.appendChild(el('a', { class: 'btn block', href: '#impostazioni/account-nuvio', style: 'margin:6px 0 4px' }, t('welcome.fromNuvio')));
     view.appendChild(addonForm(() => renderWelcome()));
     const list = el('div', { class: 'group', style: 'margin-top:16px' });
     view.appendChild(list);
