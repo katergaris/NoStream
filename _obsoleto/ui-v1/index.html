@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>NoStream</title>
+<link rel="icon" href="/logo.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#FFD93D">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-row">
+    <a href="#" class="logo" aria-label="NoStream, torna alla ricerca">
+      <img class="logo-mark" src="/logo.svg" alt="" width="44" height="44">
+      <span class="logo-text">NO<span>STREAM</span></span>
+    </a>
+    <form id="search-form" class="search-bar" role="search">
+      <input type="search" id="search-input" placeholder="Cerca un film o una serie…" autocomplete="off" enterkeyhint="search">
+      <button type="submit" class="btn btn-accent" aria-label="Cerca">🔍</button>
+    </form>
+    <nav class="nav">
+      <a href="#coda" class="nav-btn" data-view="queue" aria-label="Coda download">
+        <span aria-hidden="true">☰</span><span class="nav-label">CODA</span>
+        <span id="queue-badge" class="badge" hidden>0</span>
+      </a>
+      <a href="#impostazioni" class="nav-btn" data-view="settings" aria-label="Impostazioni">
+        <span aria-hidden="true">⚙</span><span class="nav-label">IMPOSTAZIONI</span>
+      </a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <!-- Ricerca -->
+  <section id="view-search" class="view active">
+    <div id="search-results" class="grid">
+      <div class="empty">Cerca un titolo qui sopra per iniziare.</div>
+    </div>
+  </section>
+
+  <!-- Scheda film / serie -->
+  <section id="view-detail" class="view">
+    <button id="detail-back" class="btn btn-ghost back-btn">&larr; Risultati</button>
+    <div id="detail-content"></div>
+  </section>
+
+  <!-- Coda -->
+  <section id="view-queue" class="view">
+    <div class="queue-head">
+      <div>
+        <h2>Coda download</h2>
+        <p id="queue-summary" class="hint">La coda è vuota.</p>
+      </div>
+      <div class="queue-controls">
+        <button id="queue-toggle" class="btn btn-accent">▶ AVVIA</button>
+        <button id="queue-clear-done" class="btn">TOGLI COMPLETATI</button>
+        <button id="queue-clear-all" class="btn btn-danger">SVUOTA</button>
+      </div>
+    </div>
+    <p class="note">
+      I download partono <strong>uno alla volta</strong> nel browser di questo dispositivo:
+      tieni aperta questa pagina finché la coda non è finita. Se il browser chiede di
+      consentire <em>download multipli</em>, accetta.
+    </p>
+    <div id="queue-list" class="queue-list"></div>
+
+    <div id="server-section" class="server-section" hidden>
+      <h2>📦 Sul server</h2>
+      <p class="hint">File scaricati (o in download) sul disco del server: da qui arrivano su questo dispositivo in pochi secondi. Si cancellano da soli 3 giorni dopo l'ultimo uso.</p>
+      <div id="server-list" class="queue-list"></div>
+    </div>
+  </section>
+
+  <!-- Impostazioni -->
+  <section id="view-settings" class="view">
+    <div class="panel-block">
+      <h2>🔑 API TMDB</h2>
+      <p class="hint">
+        Serve una API key gratuita di TMDB per la ricerca. Registrati su
+        <strong>themoviedb.org</strong> e generane una da Impostazioni → API.
+      </p>
+      <form id="settings-form" class="settings-form">
+        <label class="field">
+          <span>TMDB API Key</span>
+          <input type="text" id="settings-tmdb-key" placeholder="Incolla qui la tua API key…" autocomplete="off">
+        </label>
+        <label class="field">
+          <span>Lingua risultati</span>
+          <select id="settings-language">
+            <option value="it-IT">Italiano</option>
+            <option value="en-US">English</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Conversioni HLS simultanee</span>
+          <input type="number" id="settings-concurrent" min="1" max="10" step="1">
+        </label>
+        <label class="field">
+          <span>Timeout addon (secondi)</span>
+          <input type="number" id="settings-addon-timeout" min="5" max="300" step="5">
+        </label>
+        <button type="submit" class="btn btn-accent">SALVA IMPOSTAZIONI</button>
+      </form>
+    </div>
+
+    <div class="panel-block">
+      <h2>🧩 ADDON STREMIO</h2>
+      <p class="hint">Le fonti di stream interrogate per ogni ricerca.</p>
+      <form id="addon-form" class="addon-form">
+        <input type="text" id="addon-name" placeholder="Nome addon" autocomplete="off">
+        <input type="text" id="addon-url" placeholder="URL manifest.json" autocomplete="off">
+        <button type="submit" class="btn btn-accent">AGGIUNGI</button>
+      </form>
+      <div id="addon-list" class="list"></div>
+    </div>
+
+    <p class="version-line">NoStream <span id="app-version">…</span></p>
+  </section>
+</main>
+
+<div id="action-bar" class="action-bar" hidden></div>
+<div id="toast" class="toast" hidden></div>
+
+<script src="/js/app.js"></script>
+</body>
+</html>
