@@ -9,6 +9,7 @@ const progress = require('./src/progress');
 const prepared = require('./src/prepared');
 const ytdlp = require('./src/ytdlp');
 const nuvio = require('./src/nuvio');
+const plugins = require('./src/plugins');
 
 const cfg = config.get();
 
@@ -93,11 +94,17 @@ app.get('/api/streams', asyncRoute(async (req, res) => {
 
   const stremioId = addons.buildStremioId(imdbId, stremioType, season, episode);
   const addonList = config.listAddons();
-  if (addonList.length === 0) {
+  const pluginsOn = !!plugins.settings().enabled;
+  if (addonList.length === 0 && !pluginsOn) {
     return res.status(400).json({ error: 'Nessun addon configurato: aggiungine uno in Impostazioni → Addon' });
   }
 
-  const { streams, errors } = await addons.getStreamsForAllAddons(addonList, stremioType, stremioId);
+  const [fromAddons, fromPlugins] = await Promise.all([
+    addons.getStreamsForAllAddons(addonList, stremioType, stremioId),
+    plugins.getStreams(tmdbId, type === 'tv' ? 'tv' : 'movie', season ? Number(season) : null, episode ? Number(episode) : null, cfg.addonTimeoutMs)
+  ]);
+  const streams = [...fromAddons.streams, ...fromPlugins.streams];
+  const errors = [...fromAddons.errors, ...fromPlugins.errors];
   // Stessi criteri dell'addon per Nuvio: diretti con dimensione nota in cima, poi HLS;
   // i non supportati (torrent) in fondo, solo per informazione.
   const ranked = await rankDownloadable(streams.filter(s => s.supported));
@@ -380,6 +387,8 @@ app.post('/api/nuvio/login', nuvioRoute(req => {
 app.post('/api/nuvio/sync', nuvioRoute(() => nuvio.sync()));
 app.post('/api/nuvio/profile', nuvioRoute(req => nuvio.setProfile((req.body || {}).profileId)));
 app.post('/api/nuvio/addons/:id', nuvioRoute(req => nuvio.setUsed(req.params.id, !!(req.body || {}).used)));
+app.post('/api/nuvio/plugins', nuvioRoute(req => nuvio.setPluginsEnabled(!!(req.body || {}).enabled)));
+app.post('/api/nuvio/plugins/:key', nuvioRoute(req => nuvio.setPluginUsed(req.params.key, !!(req.body || {}).used)));
 app.post('/api/nuvio/logout', nuvioRoute(() => nuvio.logout()));
 
 // ---- Video da link (yt-dlp) ----
@@ -599,16 +608,26 @@ app.get('/stream/:type/:id.json', addonCors, asyncRoute(async (req, res) => {
   if (type !== 'movie' && type !== 'series') return res.json({ streams: [] });
 
   const addonList = config.listAddons();
-  if (!addonList.length) return res.json({ streams: [] });
-
-  const { streams } = await addons.getStreamsForAllAddons(addonList, type, id);
-  const downloadable = streams.filter(s => s.supported);
-  if (!downloadable.length) return res.json({ streams: [] });
+  const pluginsOn = !!plugins.settings().enabled;
+  if (!addonList.length && !pluginsOn) return res.json({ streams: [] });
 
   const { imdbId, season, episode } = parseStremioId(id);
+  // L'id TMDB serve ai plugin (e il titolo al nome del file): si chiede in parallelo agli addon.
+  const infoPromise = addons.findByImdbId(imdbId, type, cfg.tmdbApiKey, cfg.language).catch(() => null);
+  const [fromAddons, fromPlugins] = await Promise.all([
+    addons.getStreamsForAllAddons(addonList, type, id),
+    pluginsOn
+      ? infoPromise.then(info => (info && info.tmdbId
+        ? plugins.getStreams(info.tmdbId, type === 'series' ? 'tv' : 'movie', season ? Number(season) : null, episode ? Number(episode) : null, cfg.addonTimeoutMs)
+        : { streams: [] }))
+      : { streams: [] }
+  ]);
+  const downloadable = [...fromAddons.streams, ...fromPlugins.streams].filter(s => s.supported);
+  if (!downloadable.length) return res.json({ streams: [] });
+
   let label = id;
   try {
-    const info = await addons.findByImdbId(imdbId, type, cfg.tmdbApiKey, cfg.language);
+    const info = await infoPromise;
     if (info && info.title) {
       label = type === 'series'
         ? `${info.title} S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`

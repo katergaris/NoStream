@@ -325,5 +325,20 @@
   "nuvioAcc.st.noImdb": "id non compatibili",
   "nuvioAcc.st.disabled": "disattivato in Nuvio",
   "nuvioAcc.st.duplicate": "doppione",
-  "nuvioAcc.st.unreachable": "non risponde"
+  "nuvioAcc.st.unreachable": "non risponde",
+  "plugins.title": {
+    "one": "Plugin di Nuvio (1)",
+    "other": "Plugin di Nuvio ({n} in {repos} repository)"
+  },
+  "plugins.none": "Nel tuo account Nuvio non ci sono repository di plugin.",
+  "plugins.useAll": "Usa i plugin di Nuvio",
+  "plugins.useAllHint": "I plugin cercano i link sui loro siti, come fa Nuvio sul telefono",
+  "plugins.confirmEnable": "I plugin sono programmi scritti da terzi: NoStream li esegue sul server in un processo chiuso, senza accesso ai file del server, ma con accesso a internet. Accenderli?",
+  "plugins.security": "I plugin girano in un processo separato che non può leggere né scrivere i file del server (configurazione, chiavi, download) e non può avviare altri programmi. Ricevono solo l'id TMDB del titolo e la tua API key TMDB, come in Nuvio.",
+  "plugins.repoError": "repository non raggiungibile ({error})",
+  "plugins.lastOk": {
+    "one": "ultima ricerca: 1 link in {s} s",
+    "other": "ultima ricerca: {n} link in {s} s"
+  },
+  "plugins.lastError": "ultima ricerca: errore ({error})"
 }

@@ -1832,10 +1832,61 @@ function renderNuvioAccountPage(view) {
     view.appendChild(el('div', { class: 'meta', style: 'margin:6px 4px 0' }, t('nuvioAcc.hint')));
   }
 
+  renderNuvioPlugins(view, n.plugins, rerender);
+
   view.appendChild(el('button', { class: 'btn danger block', type: 'button', style: 'margin-top:24px', onclick: async () => {
     if (!confirm(t('nuvioAcc.confirmLogout'))) return;
     try { rerender(await api('/nuvio/logout', { method: 'POST' })); } catch (err) { toast(err.message, true); }
   } }, t('nuvioAcc.logout')));
+}
+
+function renderNuvioPlugins(view, p, rerender) {
+  if (!p) return;
+  const count = p.repos.reduce((n, r) => n + r.scrapers.length, 0);
+  view.appendChild(el('div', { class: 'sec' }, t('plugins.title', { n: count, repos: p.repos.length })));
+  if (!p.repos.length) {
+    view.appendChild(el('div', { class: 'meta', style: 'margin:0 4px' }, t('plugins.none')));
+    return;
+  }
+  view.appendChild(el('div', { class: 'group' }, switchRow(t('plugins.useAll'), p.enabled, async v => {
+    if (v && !confirm(t('plugins.confirmEnable'))) { rerender(state.nuvio); return; }
+    try { rerender(await api('/nuvio/plugins', { method: 'POST', body: JSON.stringify({ enabled: v }) })); }
+    catch (err) { toast(err.message, true); }
+  }, t('plugins.useAllHint'))));
+  view.appendChild(el('div', { class: 'note' }, [icon('info'), el('span', {}, t('plugins.security'))]));
+
+  for (const repo of p.repos) {
+    view.appendChild(el('div', { class: 'sec' }, [repo.name || repo.host,
+      el('span', {}, repo.error ? t('plugins.repoError', { error: repo.error }) : !repo.enabled ? t('nuvioAcc.st.disabled') : repo.host)]));
+    if (!repo.scrapers.length) continue;
+    const group = el('div', { class: 'group' + (p.enabled ? '' : ' dimmed') });
+    for (const x of repo.scrapers) {
+      const meta = [
+        x.version ? `v${x.version}` : null,
+        x.langs.length ? x.langs.join('/').toUpperCase() : null,
+        x.types.map(tp => (tp === 'tv' ? t('kind.tv') : tp === 'movie' ? t('kind.movie') : tp)).join(', ')
+      ].filter(Boolean).join(' · ');
+      const last = x.last
+        ? (x.last.error ? t('plugins.lastError', { error: x.last.error }) : t('plugins.lastOk', { n: x.last.count, s: new Intl.NumberFormat(I18N.lang, { maximumFractionDigits: 1 }).format(x.last.ms / 1000) }))
+        : null;
+      let right;
+      if (x.status !== 'ok') {
+        right = el('span', { class: 'chip err', title: x.error || '' }, t('nuvioAcc.st.unreachable'));
+      } else {
+        const input = el('input', { type: 'checkbox', role: 'switch', 'aria-label': t('nuvioAcc.use', { name: x.name }), onchange: async e => {
+          try { rerender(await api(`/nuvio/plugins/${x.key}`, { method: 'POST', body: JSON.stringify({ used: e.target.checked }) })); }
+          catch (err) { toast(err.message, true); }
+        } });
+        input.checked = x.used;
+        right = el('span', { class: 'switch' }, [input, el('span')]);
+      }
+      group.appendChild(el('div', { class: 'set' }, [
+        el('span', { style: 'min-width:0' }, [x.name, el('small', {}, meta), last ? el('small', { class: x.last.error ? 'err-text' : '' }, last) : null]),
+        right
+      ]));
+    }
+    view.appendChild(group);
+  }
 }
 
 function formatDateTime(ms) {

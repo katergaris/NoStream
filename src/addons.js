@@ -105,6 +105,7 @@ async function findByImdbId(imdbId, mediaType, apiKey, language) {
   if (!results || !results.length) return null;
   const r = results[0];
   return {
+    tmdbId: r.id,
     title: r.title || r.name || null,
     year: (r.release_date || r.first_air_date || '').slice(0, 4) || null
   };
