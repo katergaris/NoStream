@@ -320,6 +320,16 @@ function renderSearch() {
   }
 }
 
+// Il server non conosce le locandine: le cerchiamo tra download e titoli recenti con lo
+// stesso nome (il titolo del file è «Titolo S01E02» o «Titolo (2024)»).
+function serverFilePoster(f) {
+  const title = f.title || '';
+  const q = queue.items.find(i => i.title === title && i.posterUrl);
+  if (q) return q.posterUrl;
+  const r = (storageGet(RECENT_KEY) || []).find(i => i.posterUrl && title.startsWith(i.title));
+  return r ? r.posterUrl : null;
+}
+
 function renderHomeReady() {
   const box = $('#home-ready');
   if (!box) return;
@@ -327,7 +337,11 @@ function renderHomeReady() {
   const ready = serverFiles.filter(f => f.status === 'done');
   if (!ready.length) return;
   box.appendChild(el('div', { class: 'sec' }, [t('home.readyOnServer'), el('a', { class: 'link-btn', href: '#download' }, t('home.all'))]));
-  for (const f of ready.slice(0, 3)) box.appendChild(serverFileRow(f));
+  box.appendChild(el('div', { class: 'shelf' }, ready.map(f => el('a', { class: 'poster-card', href: f.path, download: '', title: t('common.download') }, [
+    posterEl(serverFilePoster(f), f.title || f.filename),
+    el('div', { class: 'pt' }, f.title || f.filename),
+    el('div', { class: 'pm' }, [formatSize(f.size), t('common.download')].filter(Boolean).join(' · '))
+  ]))));
 }
 
 function renderHomeActive() {
@@ -531,8 +545,8 @@ function renderSeasonActions() {
     : todo.length === 0
       ? t('detail.seasonAllQueued')
       : todo.length === state.episodes.filter(episodeAired).length
-        ? t('detail.downloadSeasonCount', { s: state.season, n: todo.length })
-        : t('detail.downloadMissing', { n: todo.length });
+        ? t('detail.downloadSeason', { n: state.season })
+        : t('detail.downloadSeasonMissing', { s: state.season, n: todo.length });
   box.appendChild(el('div', { class: 'btn-row' }, [
     el('button', { class: 'btn primary', type: 'button', disabled: !todo.length,
       onclick: () => enqueueEpisodes(todo) }, [icon('download'), label]),
@@ -970,7 +984,7 @@ async function startItem(item) {
 
   const s = candidates[0];
   item.tried.push(streamKey(s));
-  item.stream = { title: s.title, addon: (s.addonNames || [s.addonName]).join(', '), kind: s.kind || null, size: s.size || null };
+  item.stream = { title: s.title, addon: (s.addonNames || [s.addonName]).join(', '), kind: s.kind || null, size: s.size || null, quality: streamQuality(s) ? qualityLabel(s) : null };
   item.sent = 0;
   item.total = s.size || null;
   item.startedAt = Date.now();
@@ -1120,8 +1134,12 @@ function progressText(item) {
 function itemStatusText(item) {
   switch (item.status) {
     case 'pending': return item.lastError ? t('status.retrying') : t('status.pending');
-    case 'done':
-      return item.note === 'server' ? t('status.doneServer') : item.note === 'external' ? t('status.doneExternal') : t('status.done');
+    case 'done': {
+      const where = item.note === 'server' ? t('status.doneServer') : item.note === 'external' ? t('status.doneExternal') : t('status.done');
+      const st = item.stream || {};
+      const details = [st.quality, formatSize(item.total || st.size)].filter(Boolean);
+      return details.length ? [...details, where].join(' · ') : t('status.doneOnly', { where });
+    }
     case 'error': return item.error || t('status.error');
     default: return progressText(item);
   }
