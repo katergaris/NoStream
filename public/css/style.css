@@ -122,7 +122,7 @@ body.has-selbar main { padding-bottom: calc(var(--tabbar-h) + var(--safe-b) + 88
 .btn.sm { height: 34px; padding: 0 12px; font-size: 13.5px; border-radius: var(--radius-sm); }
 .btn.square { width: 46px; padding: 0; flex: none; }
 .btn-row { display: flex; gap: 8px; margin-top: 14px; }
-.btn-row .btn:not(.square) { flex: 1; }
+.btn-row .btn:not(.square) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .link-btn { color: var(--accent-text); font-weight: 600; font-size: 13.5px; }
 
 /* ---------- Ricerca ---------- */
@@ -135,7 +135,7 @@ body.has-selbar main { padding-bottom: calc(var(--tabbar-h) + var(--safe-b) + 88
 .search input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; font-size: 16px; color: var(--text); }
 .search input::-webkit-search-cancel-button { display: none; }
 .results { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 14px 12px; margin-top: 16px; }
-.poster-card { text-align: left; min-width: 0; }
+.poster-card { text-align: left; min-width: 0; text-decoration: none; color: inherit; }
 .poster {
   aspect-ratio: 2 / 3; width: 100%; border-radius: var(--radius-sm); overflow: hidden;
   background: var(--surface2); position: relative;
