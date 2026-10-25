@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NoStream v2 — analisi e mockup</title>
+<style>
+/* ---------- Pagina di presentazione ---------- */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: #e9e9ec; color: #1b1c20; line-height: 1.5; }
+.doc { max-width: 1240px; margin: 0 auto; padding: 48px 24px 96px; }
+.doc h1 { font-size: 34px; letter-spacing: -0.02em; }
+.doc h2 { font-size: 24px; margin: 56px 0 8px; letter-spacing: -0.01em; }
+.doc h3 { font-size: 16px; margin: 20px 0 6px; }
+.doc p.lead { font-size: 17px; color: #4a4d55; max-width: 760px; margin-top: 8px; }
+.doc p, .doc li { font-size: 15px; }
+.doc ul, .doc ol { padding-left: 20px; }
+.doc li { margin: 4px 0; }
+.doc table { border-collapse: collapse; width: 100%; margin-top: 12px; background: #fff; border-radius: 12px; overflow: hidden; font-size: 14px; }
+.doc th, .doc td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #ececef; vertical-align: top; }
+.doc th { background: #f4f4f6; font-weight: 600; }
+.card-note { background: #fff; border-radius: 14px; padding: 18px 20px; margin-top: 14px; }
+.problems { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-top: 14px; }
+.problems .card-note { margin: 0; }
+.problems b { display: block; margin-bottom: 4px; }
+.row-frames { display: flex; flex-wrap: wrap; gap: 28px; margin-top: 20px; align-items: flex-start; }
+.frame-wrap { width: 360px; }
+.frame-wrap h4 { font-size: 15px; margin-bottom: 8px; }
+.frame-wrap .cap { font-size: 13.5px; color: #4a4d55; margin-top: 10px; }
+.frame-wrap .cap ol { padding-left: 18px; }
+.verdict { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: #dff5e9; color: #146c43; margin-left: 6px; }
+
+/* ---------- Telefono ---------- */
+.phone { width: 360px; height: 740px; border-radius: 34px; overflow: hidden; position: relative; box-shadow: 0 0 0 8px #1b1c20, 0 24px 48px rgba(0,0,0,.25); display: flex; flex-direction: column; background: var(--bg); color: var(--text); font-family: var(--font); }
+.status { height: 30px; flex: none; display: flex; justify-content: space-between; align-items: center; padding: 0 22px; font-size: 12px; font-weight: 600; color: var(--text); }
+.screen { flex: 1; overflow: hidden; position: relative; }
+.scroll { position: absolute; inset: 0; overflow: hidden; padding: 0 16px 90px; }
+
+/* ---------- Temi ---------- */
+.t-a { --bg:#0f1015; --surface:#181a22; --surface2:#222532; --line:#2a2d3a; --text:#eceef3; --muted:#959bab; --accent:#f5c542; --on-accent:#17140a; --ok:#3ecf8e; --warn:#f0a441; --err:#ff6b6b; --radius:14px; --font: system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; --shadow: none; --border: 1px solid var(--line); --btn-border: none; --upper: none; }
+.t-b { --bg:#f6f6f4; --surface:#ffffff; --surface2:#f0f0ed; --line:#e4e4df; --text:#17181c; --muted:#6b6f78; --accent:#2f6bff; --on-accent:#fff; --ok:#169b62; --warn:#c77a12; --err:#d93a3a; --radius:12px; --font: system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; --shadow: 0 1px 2px rgba(0,0,0,.05); --border: 1px solid var(--line); --btn-border: none; --upper: none; }
+.t-c { --bg:#fff8ec; --surface:#ffffff; --surface2:#fff1d6; --line:#111; --text:#111; --muted:#5a5650; --accent:#ffd93d; --on-accent:#111; --ok:#1f9d55; --warn:#b86e00; --err:#d62828; --radius:10px; --font: system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; --shadow: 3px 3px 0 #111; --border: 2px solid #111; --btn-border: 2px solid #111; --upper: none; }
+
+/* ---------- Componenti ---------- */
+.appbar { display: flex; align-items: center; gap: 10px; height: 48px; }
+.appbar .ttl { font-weight: 650; font-size: 17px; flex: 1; }
+.ico { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; font-size: 18px; color: var(--text); background: transparent; }
+.hero { display: flex; gap: 14px; margin-top: 4px; }
+.poster { width: 92px; height: 138px; border-radius: calc(var(--radius) - 4px); flex: none; background: linear-gradient(160deg,#3b6cf6 0%,#1d2f7a 70%); position: relative; overflow: hidden; border: var(--btn-border); }
+.poster::after { content: ""; position: absolute; width: 54px; height: 54px; border-radius: 50%; background: #f1d35a; top: 22px; right: 12px; opacity: .9; }
+.poster.p2 { background: linear-gradient(160deg,#c2410c,#3f1d0b); } .poster.p2::after { background:#fde68a; top: 70px; left: 10px; }
+.poster.p3 { background: linear-gradient(160deg,#0f766e,#052e2b); } .poster.p3::after { background:#a7f3d0; width: 30px; height: 30px; }
+.poster.p4 { background: linear-gradient(160deg,#7e22ce,#2e1065); } .poster.p4::after { background:#f9a8d4; border-radius: 6px; }
+.hero h2 { font-size: 20px; line-height: 1.2; letter-spacing: -0.01em; }
+.meta { color: var(--muted); font-size: 13px; margin-top: 4px; }
+.ov { font-size: 13px; color: var(--muted); margin-top: 8px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.btn { display: flex; align-items: center; justify-content: center; gap: 8px; height: 46px; border-radius: var(--radius); font-weight: 650; font-size: 15px; background: var(--surface2); color: var(--text); border: var(--btn-border); box-shadow: var(--shadow); width: 100%; font-family: inherit; }
+.btn.primary { background: var(--accent); color: var(--on-accent); }
+.btn.sm { height: 34px; font-size: 13px; width: auto; padding: 0 12px; }
+.btn-row { display: flex; gap: 8px; margin-top: 14px; }
+.btn-row .btn.ghost { flex: 0 0 auto; width: 46px; }
+.tabs { display: flex; gap: 6px; margin: 18px 0 8px; }
+.tab { padding: 7px 13px; border-radius: 999px; font-size: 13px; font-weight: 600; background: var(--surface2); color: var(--muted); border: var(--btn-border); }
+.tab.on { background: var(--text); color: var(--bg); }
+.t-c .tab.on { background: var(--accent); color: #111; }
+.ep { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--line); }
+.t-c .ep { border-bottom: 2px solid #111; }
+.ep .n { width: 26px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 600; }
+.ep .tx { flex: 1; min-width: 0; }
+.ep .tx b { font-size: 14.5px; font-weight: 600; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ep .tx span { font-size: 12.5px; color: var(--muted); }
+.dl { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; font-size: 16px; flex: none; border: 1.5px solid var(--line); color: var(--text); position: relative; }
+.t-c .dl { border: 2px solid #111; }
+.dl.done { background: var(--ok); color: #fff; border-color: var(--ok); }
+.dl.queued { color: var(--muted); }
+.dl.err { color: var(--err); border-color: var(--err); }
+.dl.prog { border: none; background: conic-gradient(var(--accent) 0 var(--p), var(--line) var(--p) 100%); }
+.dl.prog::before { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--bg); }
+.dl.prog i { position: relative; font-style: normal; font-size: 10px; font-weight: 700; }
+.chip { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--surface2); color: var(--muted); }
+.chip.ok { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+.chip.warn { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+.chip.acc { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--text); }
+.tabbar { position: absolute; bottom: 0; left: 0; right: 0; height: 66px; display: flex; background: var(--surface); border-top: var(--border); padding-bottom: 8px; }
+.tabbar div { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 11px; color: var(--muted); gap: 2px; position: relative; font-weight: 600; }
+.tabbar div span { font-size: 19px; line-height: 1; }
+.tabbar div.on { color: var(--text); }
+.t-a .tabbar div.on span, .t-b .tabbar div.on span { color: var(--accent); }
+.tabbar .bdg { position: absolute; top: 6px; left: 54%; background: var(--err); color: #fff; font-size: 10px; border-radius: 999px; padding: 0 5px; line-height: 16px; }
+.card { background: var(--surface); border: var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px; }
+.search { display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 14px; border-radius: var(--radius); background: var(--surface); border: var(--border); color: var(--muted); font-size: 15px; box-shadow: var(--shadow); }
+.sec { font-size: 13px; font-weight: 700; color: var(--muted); margin: 20px 0 8px; display: flex; justify-content: space-between; }
+.sec a { color: var(--accent); font-weight: 600; text-decoration: none; }
+.t-b .sec a { color: var(--accent); } .t-c .sec a { color: #111; text-decoration: underline; }
+.posters { display: flex; gap: 10px; }
+.posters .poster { width: 98px; height: 147px; }
+.posters .pt { font-size: 12px; margin-top: 6px; width: 98px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar { height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; margin-top: 8px; }
+.t-c .bar { background: #eee; border: 1.5px solid #111; height: 8px; }
+.bar i { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+.dlrow { display: flex; gap: 12px; align-items: center; }
+.dlrow .mini { width: 40px; height: 60px; border-radius: 6px; flex: none; }
+.dlrow .tx { flex: 1; min-width: 0; }
+.dlrow b { font-size: 14px; font-weight: 600; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dlrow span { font-size: 12px; color: var(--muted); }
+.list > .dlrow { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.info { display: flex; gap: 10px; align-items: flex-start; font-size: 12.5px; color: var(--muted); background: var(--surface2); border-radius: var(--radius); padding: 10px 12px; margin-top: 10px; }
+.seg { display: flex; background: var(--surface2); border-radius: 10px; padding: 3px; gap: 3px; border: var(--btn-border); }
+.seg div { flex: 1; text-align: center; font-size: 13px; font-weight: 600; padding: 7px 4px; border-radius: 8px; color: var(--muted); }
+.seg div.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+.scrim { position: absolute; inset: 0; background: rgba(0,0,0,.55); }
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; background: var(--surface); border-radius: 22px 22px 0 0; padding: 10px 16px 18px; border-top: var(--border); }
+.sheet .grab { width: 40px; height: 5px; border-radius: 3px; background: var(--line); margin: 0 auto 12px; }
+.best { border: 1.5px solid var(--accent); border-radius: var(--radius); padding: 12px; margin-top: 12px; }
+.src { display: flex; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.src .q { font-weight: 700; width: 52px; }
+.src .tx { flex: 1; min-width: 0; }
+.src .tx div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.src .tx small { color: var(--muted); font-size: 11.5px; }
+.set-group { background: var(--surface); border: var(--border); border-radius: var(--radius); overflow: hidden; }
+.set { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; font-size: 14.5px; border-bottom: 1px solid var(--line); gap: 10px; }
+.set:last-child { border-bottom: none; }
+.set .v { color: var(--muted); font-size: 13.5px; display: flex; gap: 6px; align-items: center; }
+.set .v::after { content: "›"; font-size: 18px; color: var(--muted); }
+.set .v.nochev::after { content: none; }
+.toggle { width: 42px; height: 25px; border-radius: 999px; background: var(--ok); position: relative; flex: none; }
+.toggle::after { content: ""; position: absolute; width: 21px; height: 21px; border-radius: 50%; background: #fff; top: 2px; right: 2px; }
+.steps { display: flex; gap: 6px; margin: 6px 0 18px; }
+.steps i { flex: 1; height: 4px; border-radius: 2px; background: var(--line); }
+.steps i.on { background: var(--accent); }
+.field { margin-top: 10px; }
+.field label { font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.input { height: 46px; border-radius: 10px; background: var(--surface2); border: var(--border); display: flex; align-items: center; padding: 0 12px; font-size: 14px; color: var(--text); margin-top: 4px; gap: 8px; }
+.input .okmark { margin-left: auto; color: var(--ok); font-weight: 700; }
+.qr { width: 120px; height: 120px; margin: 14px auto 0; border-radius: 10px; background:
+  repeating-linear-gradient(90deg, #111 0 6px, #fff 6px 12px), #fff; position: relative; border: 8px solid #fff; }
+.qr::before { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(0deg, transparent 0 6px, rgba(255,255,255,.85) 6px 12px); }
+.selbar { position: absolute; left: 12px; right: 12px; bottom: 76px; display: flex; gap: 8px; }
+.cb { width: 22px; height: 22px; border-radius: 6px; border: 2px solid var(--muted); flex: none; display: grid; place-items: center; font-size: 13px; font-weight: 800; }
+.cb.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.logo { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 18px; letter-spacing: -0.02em; }
+.logo i { width: 28px; height: 28px; border-radius: 8px; background: var(--accent); display: grid; place-items: center; color: var(--on-accent); font-style: normal; font-size: 15px; border: var(--btn-border); }
+</style>
+</head>
+<body>
+<div class="doc">
+
+<h1>NoStream v2 — analisi dell'interfaccia e mockup</h1>
+<p class="lead">Obiettivo: un'interfaccia che si usa senza istruzioni. Il pubblico conosce addon, HLS e
+self-hosting, quindi i termini tecnici restano; il problema da risolvere sono i passaggi, i tasti
+nascosti e le scelte ripetute. Bozza del 25/10/2026, branch <code>v2</code>.</p>
+
+<!-- ======================================================= -->
+<h2>1. Cosa non funziona oggi</h2>
+<p>Percorso attuale per scaricare un episodio: <b>cerca → apri la serie → scegli la stagione → apri
+l'episodio → aspetta gli stream (fino a 60 s) → scegli uno stream tra le schede → scegli tra 4 azioni</b>.
+Sono 7 passaggi, e quasi tutti chiedono una decisione.</p>
+<div class="problems">
+  <div class="card-note"><b>Quattro verbi per lo stesso scopo</b>Su ogni stream compaiono «+ Coda», «⬇ Scarica»,
+  «📦 Server» e «⬇ Dal server». Per sceglierne uno bisogna sapere come funziona dentro (coda nel browser, proxy,
+  preparazione sul disco).</div>
+  <div class="card-note"><b>La scelta della fonte è obbligatoria</b>Il "consigliato" viene già calcolato, ma
+  l'utente deve comunque aprire la lista e premere un pulsante su una scheda. Sonarr, Radarr e Netflix scelgono da
+  soli: la scelta manuale esiste, ma è secondaria.</div>
+  <div class="card-note"><b>Righe degli episodi con due comandi</b>La casella a sinistra seleziona, il resto della
+  riga apre gli stream, e «Seleziona tutti» sta sopra la lista. È facile toccare la cosa sbagliata, e non si vede
+  quali episodi sono già scaricati.</div>
+  <div class="card-note"><b>Download sparsi in due posti</b>La coda del browser e i file «Sul server» stanno
+  nella stessa pagina, ma sono liste separate con regole diverse. La condizione «tieni aperta la pagina» è
+  scritta in una nota che non si nota.</div>
+  <div class="card-note"><b>Primo avvio vuoto</b>Senza API key TMDB la ricerca fallisce con un messaggio di
+  errore. La key, gli addon e il collegamento a Nuvio (l'URL del manifest) vanno cercati nel README, non
+  nell'app.</div>
+  <div class="card-note"><b>Rumore visivo</b>Tutto maiuscolo, bordi spessi, ombre ed emoji su ogni pulsante: tutto
+  ha lo stesso peso, quindi niente spicca. Il pulsante «Coda: tutta la stagione» resta sempre in fondo allo
+  schermo anche quando non serve.</div>
+</div>
+
+<!-- ======================================================= -->
+<h2>2. Come fanno le piattaforme simili</h2>
+<p>Un clone esatto di NoStream non esiste. Ogni pezzo però esiste già altrove, risolto bene:</p>
+<table>
+<tr><th>Piattaforma</th><th>Cosa fa bene</th><th>Cosa prendiamo</th></tr>
+<tr><td><b>Netflix / Prime Video</b> (download offline)</td><td>Un'icona ⬇ accanto a ogni episodio, che diventa
+anello di avanzamento e poi ✓. «Scarica stagione» in alto. Una scheda «Download» unica.</td><td>Icona di stato
+per episodio, un tocco per scaricare, una sola pagina Download.</td></tr>
+<tr><td><b>Stremio / Nuvio</b></td><td>Scheda titolo → episodi → lista stream ordinata. Il pubblico la conosce già.</td>
+<td>La stessa struttura della scheda, così l'utente si orienta subito. La lista degli stream diventa però un
+pannello opzionale, non un passaggio obbligato.</td></tr>
+<tr><td><b>Sonarr / Radarr</b></td><td>Profili di qualità: il programma sceglie da solo la release migliore. La
+«ricerca interattiva» manuale è un'opzione per chi la vuole.</td><td>Preferenze nelle impostazioni (qualità,
+lingua audio, file diretti prima) e scelta automatica. «Scegli fonte» come seconda via.</td></tr>
+<tr><td><b>Jellyseerr / Overseerr</b></td><td>Un solo grande pulsante «Richiedi», stagioni attivabili una per una,
+stato sulle locandine (disponibile, in arrivo).</td><td>Pulsante principale grande nella scheda, stato visibile già
+nei risultati di ricerca.</td></tr>
+<tr><td><b>MeTube</b> (interfaccia di yt-dlp)</td><td>Una sola casella e un pulsante; in coda, in corso e completati
+nella stessa pagina.</td><td>Una pagina Download raggruppata per stato, senza schermate intermedie.</td></tr>
+<tr><td><b>Debrid Media Manager / AIOStreams</b></td><td>Lista di fonti compatta con badge (qualità, lingua,
+dimensione, provider) leggibili a colpo d'occhio.</td><td>Righe delle fonti su una riga e mezza, con badge al posto
+delle schede alte.</td></tr>
+</table>
+<p class="card-note">Le stesse idee in breve: <b>un tocco fa la cosa giusta</b> (scelta automatica della fonte e
+della destinazione), <b>il controllo manuale c'è ma non intralcia</b> (pannello «Scegli fonte»), <b>lo stato è
+sempre visibile</b> (icone sugli episodi, badge sulla scheda Download).</p>
+
+<!-- ======================================================= -->
+<h2>3. Tre direzioni di stile, stessa schermata</h2>
+<p>Scheda di una serie, con lo stesso contenuto e la stessa struttura. Cambia solo lo stile.</p>
+
+<div class="row-frames" id="styles"></div>
+
+<div class="card-note">
+<b>Il mio parere.</b> Consiglio la <b>A, Notte</b>: le app per guardare film sono scure per convenzione
+(Stremio, Nuvio, Plex, Netflix), così le locandine risaltano. Tiene il giallo di NoStream come unico colore
+d'accento, quindi il marchio resta riconoscibile. Il tema chiaro (B) si può offrire come opzione, o seguire il
+tema del telefono, perché le due direzioni usano gli stessi componenti. La C conserva il carattere attuale con
+meno rumore. Funziona, ma per il grande pubblico resta la più «da smanettoni».
+</div>
+
+<!-- ======================================================= -->
+<h2>4. Il flusso proposto (direzione A)</h2>
+<p>Tre schede fisse in basso: <b>Cerca · Download · Impostazioni</b>. Ogni azione è visibile, senza menu nascosti.</p>
+
+<div class="row-frames" id="flow"></div>
+
+<!-- ======================================================= -->
+<h2>5. Cosa cambia nelle funzioni</h2>
+<ol>
+<li><b>Preferenze di download</b> (nuove): qualità preferita, lingua audio, file diretti prima degli HLS e
+destinazione predefinita («Su questo dispositivo» o «Prima sul server»). Su queste si basa la scelta automatica.</li>
+<li><b>Un solo pulsante «Scarica»</b> al posto di «Scarica», «+ Coda», «Server» e «Dal server». Tutto passa dalla
+coda. Se il file è già pronto sul server viene preso da lì senza chiedere nulla.</li>
+<li><b>Configurazione guidata al primo avvio</b>: API key TMDB con verifica immediata, addon aggiunti incollando
+solo l'URL (il nome viene letto dal manifest), collegamento a Nuvio con pulsante «Copia» e codice QR.</li>
+<li><b>Una sola pagina Download</b>, divisa in In corso / In coda / Pronti sul server / Completati.</li>
+<li><b>Stato sugli episodi e sulle locandine</b>: si vede subito cosa è già scaricato o in arrivo.</li>
+<li><b>Selezione multipla</b> con «Scegli episodi» e una barra in basso che compare solo mentre si seleziona.</li>
+<li><b>Addon</b>: stato (risponde / non risponde / lento), attivazione e disattivazione senza cancellarli,
+riordino.</li>
+<li><b>Già pronta per le lingue</b>: lingua dell'interfaccia separata dalla lingua dei metadati TMDB.</li>
+<li><b>Video da link (yt-dlp)</b>: si incolla nella ricerca un link di YouTube o di un altro sito supportato da
+yt-dlp, per un video singolo o una playlist intera. Si può scegliere video o solo audio. Il download passa dal
+server e finisce nella stessa pagina Download. yt-dlp si aggiorna dalle impostazioni. Funziona solo nella web app,
+non in Nuvio. «Segui playlist/canale» è rimandato a dopo la 2.0.</li>
+</ol>
+</div>
+
+<!-- ======================== Template dei telefoni ======================== -->
+<template id="tpl-detail">
+  <div class="status"><span>9:41</span><span>●●● 100%</span></div>
+  <div class="screen"><div class="scroll">
+    <div class="appbar"><div class="ico">←</div><div class="ttl"></div><div class="ico">⋯</div></div>
+    <div class="hero">
+      <div class="poster"></div>
+      <div>
+        <h2>Il Faro nella Nebbia</h2>
+        <div class="meta">2024 · Serie TV · 3 stagioni</div>
+        <div class="ov">Su un'isola dimenticata del Nord, la nuova guardiana del faro scopre che la luce non serve a guidare le navi.</div>
+      </div>
+    </div>
+    <div class="btn-row">
+      <div class="btn primary">⬇ Scarica stagione 1</div>
+      <div class="btn ghost" title="Scegli episodi">☑</div>
+    </div>
+    <div class="tabs"><div class="tab on">Stagione 1</div><div class="tab">Stagione 2</div><div class="tab">Stagione 3</div></div>
+    <div class="ep"><div class="n">1</div><div class="tx"><b>La luce si spegne</b><span>1080p · 1,4 GB · sul dispositivo</span></div><div class="dl done">✓</div></div>
+    <div class="ep"><div class="n">2</div><div class="tx"><b>Il registro del guardiano</b><span>In download · 620 MB di 1,3 GB</span></div><div class="dl prog" style="--p:46%"><i>46%</i></div></div>
+    <div class="ep"><div class="n">3</div><div class="tx"><b>Bassa marea</b><span>In coda</span></div><div class="dl queued">◷</div></div>
+    <div class="ep"><div class="n">4</div><div class="tx"><b>Segnali dal largo</b><span>46 min</span></div><div class="dl">↓</div></div>
+    <div class="ep"><div class="n">5</div><div class="tx"><b>La stanza della lente</b><span>Nessuna fonte ha funzionato · Riprova</span></div><div class="dl err">!</div></div>
+    <div class="ep"><div class="n">6</div><div class="tx"><b>Nebbia fitta</b><span>44 min</span></div><div class="dl">↓</div></div>
+  </div>
+  <div class="tabbar"><div><span>⌕</span>Cerca</div><div class="on"><span>⬇</span>Download<b class="bdg">2</b></div><div><span>⚙</span>Impostazioni</div></div>
+  </div>
+</template>
+
+<script>
+const tpl = document.getElementById('tpl-detail');
+const styles = [
+  ['t-a', 'A · Notte', 'Scura e cinematografica. Il giallo di NoStream è l\'unico accento.', true],
+  ['t-b', 'B · Carta', 'Chiara e sobria, stile app di sistema. Accento blu, ombre quasi assenti.'],
+  ['t-c', 'C · Neobrutalismo morbido', 'Evoluzione dell\'attuale: bordi più sottili, niente maiuscolo, una sola ombra.']
+];
+const wrap = document.getElementById('styles');
+for (const [cls, name, cap, rec] of styles) {
+  const fw = document.createElement('div');
+  fw.className = 'frame-wrap';
+  fw.innerHTML = `<h4>${name}${rec ? '<span class="verdict">consigliata</span>' : ''}</h4>`;
+  const ph = document.createElement('div');
+  ph.className = 'phone ' + cls;
+  ph.appendChild(tpl.content.cloneNode(true));
+  fw.appendChild(ph);
+  fw.insertAdjacentHTML('beforeend', `<div class="cap">${cap}</div>`);
+  wrap.appendChild(fw);
+}
+
+// ---- Flusso completo in direzione A ----
+const SB = '<div class="status"><span>9:41</span><span>●●● 100%</span></div>';
+const TB = on => `<div class="tabbar">${[['⌕','Cerca'],['⬇','Download'],['⚙','Impostazioni']].map(([i,l]) =>
+  `<div class="${l===on?'on':''}"><span>${i}</span>${l}${l==='Download'?'<b class="bdg">2</b>':''}</div>`).join('')}</div>`;
+
+const flow = [
+['1 · Primo avvio, guidato', `
+${SB}<div class="screen"><div class="scroll" style="padding-bottom:16px">
+  <div class="appbar"><div class="logo"><i>↓</i>NoStream</div></div>
+  <div class="steps"><i class="on"></i><i class="on"></i><i></i></div>
+  <div style="font-size:12px;color:var(--muted);font-weight:600">PASSO 2 DI 3</div>
+  <h2 style="font-size:22px;margin-top:4px">Aggiungi le fonti</h2>
+  <p class="meta" style="font-size:13.5px">Incolla l'URL del manifest di un addon Stremio. Il nome viene letto da solo.</p>
+  <div class="field"><label>URL del manifest</label><div class="input" style="font-size:12.5px">https://addon.example/…/manifest.json</div></div>
+  <div class="btn primary" style="margin-top:10px">Aggiungi</div>
+  <div class="sec">Aggiunti</div>
+  <div class="card" style="padding:0 14px">
+    <div class="src"><div class="tx"><div><b>Addon di esempio</b></div><small>Risponde in 2,1 s</small></div><span class="chip ok">● attivo</span></div>
+    <div class="src" style="border:none"><div class="tx"><div><b>Altro addon</b></div><small>Risponde in 6,8 s</small></div><span class="chip ok">● attivo</span></div>
+  </div>
+  <div class="btn-row" style="position:absolute;left:16px;right:16px;bottom:18px"><div class="btn" style="flex:0 0 110px">Indietro</div><div class="btn primary">Avanti</div></div>
+</div></div>`,
+['Al primo avvio si viene accompagnati in tre passi: API key TMDB (verificata subito), addon, collegamento a Nuvio.',
+ 'Per un addon basta l\'URL: il nome e la risposta (veloce o lenta) si vedono subito.']],
+
+['2 · Cerca: la pagina iniziale', `
+${SB}<div class="screen"><div class="scroll">
+  <div class="appbar"><div class="logo"><i>↓</i>NoStream</div></div>
+  <div class="search">⌕ <span>Cerca un film o una serie</span></div>
+  <div class="card" style="margin-top:14px">
+    <div class="dlrow"><div class="poster mini"></div><div class="tx"><b>Il Faro nella Nebbia · E02</b><span>620 MB di 1,3 GB · ancora 2 in coda</span><div class="bar"><i style="width:46%"></i></div></div></div>
+  </div>
+  <div class="sec">Visti di recente <a>Tutti</a></div>
+  <div class="posters">
+    <div><div class="poster"></div><div class="pt">Il Faro nella Nebbia</div></div>
+    <div><div class="poster p2"></div><div class="pt">Ruggine</div></div>
+    <div><div class="poster p3"></div><div class="pt">Marea alta</div></div>
+  </div>
+  <div class="sec">Pronti sul server</div>
+  <div class="posters">
+    <div><div class="poster p4"></div><div class="pt">Notte a Pechino</div></div>
+    <div><div class="poster p2"></div><div class="pt">Ruggine · E01–E04</div></div>
+  </div>
+</div>${TB('Cerca')}</div>`,
+['Il download in corso è sempre in vista: un tocco porta alla pagina Download.',
+ 'I titoli aperti di recente e quelli già pronti sul server: non serve cercarli di nuovo.']],
+
+['3 · Scheda serie', `
+${SB}${tpl.innerHTML.replace(SB,'').replace('<div class="status"><span>9:41</span><span>●●● 100%</span></div>','')}`,
+['<b>Tocco su ↓</b>: scarica con la fonte migliore secondo le preferenze. L\'icona diventa anello di avanzamento e poi ✓.',
+ '<b>Tocco sulla riga</b>: apre il pannello delle fonti (schermata 4).',
+ '<b>Scarica stagione 1</b> mette in coda tutti gli episodi non ancora scaricati. <b>☑</b> attiva la selezione multipla.']],
+
+['4 · Pannello «Scegli fonte»', `
+${SB}<div class="screen"><div class="scroll" style="opacity:.35">
+  <div class="appbar"><div class="ico">←</div></div>
+  <div class="hero"><div class="poster"></div><div><h2>Il Faro nella Nebbia</h2></div></div>
+</div><div class="scrim"></div>
+<div class="sheet">
+  <div class="grab"></div>
+  <div style="font-size:12px;color:var(--muted);font-weight:600">S1 · E04</div>
+  <div style="font-weight:650;font-size:17px">Segnali dal largo</div>
+  <div class="best">
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><span class="chip acc">★ Scelta automatica</span><span class="chip ok">File diretto</span></div>
+    <div style="font-weight:600;margin-top:8px;font-size:14px">1080p · WEB-DL · ITA ENG · 1,4 GB</div>
+    <div class="meta" style="margin-top:2px">Addon di esempio</div>
+    <div class="seg" style="margin-top:10px"><div class="on">Su questo dispositivo</div><div>Prima sul server</div></div>
+    <div class="btn primary" style="margin-top:10px">⬇ Scarica</div>
+  </div>
+  <div class="sec" style="margin-top:14px">Altre fonti (4)</div>
+  <div class="src"><div class="q">720p</div><div class="tx"><div>WEB-DL · ITA</div><small>File diretto · 780 MB · Addon di esempio</small></div><div class="dl" style="width:32px;height:32px">↓</div></div>
+  <div class="src"><div class="q">1080p</div><div class="tx"><div>ITA</div><small>HLS, da convertire · Altro addon</small></div><div class="dl" style="width:32px;height:32px">↓</div></div>
+  <div class="src" style="border:none"><div class="q">4K</div><div class="tx"><div>HDR · ENG</div><small>File diretto · 9,8 GB · Altro addon</small></div><div class="dl" style="width:32px;height:32px">↓</div></div>
+  <div class="meta" style="text-align:center;margin-top:6px">2 fonti torrent nascoste · non scaricabili</div>
+</div></div>`,
+['In alto c\'è la fonte che verrebbe scelta da sola: per scaricarla basta un tocco, come prima.',
+ 'La destinazione si cambia qui solo per questo download; quella predefinita sta nelle impostazioni.',
+ 'Le altre fonti stanno su una riga e mezza con i badge. Quelle non scaricabili non compaiono, viene detto solo quante sono.']],
+
+['5 · Download, tutto in un posto', `
+${SB}<div class="screen"><div class="scroll">
+  <div class="appbar"><div class="ttl" style="font-size:22px">Download</div><div class="btn sm">❙❙ Pausa</div></div>
+  <div class="info">☀ <span>La coda lavora in questa pagina: lo schermo resta acceso finché non ha finito.</span></div>
+  <div class="sec">In corso</div>
+  <div class="card"><div class="dlrow"><div class="poster mini"></div><div class="tx"><b>Il Faro nella Nebbia · S1E02</b><span>620 MB di 1,3 GB · 8,4 MB/s · 1 min</span><div class="bar"><i style="width:46%"></i></div></div></div></div>
+  <div class="sec">In coda (2) <a>Riordina</a></div>
+  <div class="list">
+    <div class="dlrow"><div class="poster mini"></div><div class="tx"><b>S1E03 · Bassa marea</b><span>In attesa</span></div><div class="ico">✕</div></div>
+    <div class="dlrow"><div class="poster mini"></div><div class="tx"><b>S1E05 · La stanza della lente</b><span style="color:var(--err)">Nessuna fonte ha funzionato (3 provate)</span></div><div class="btn sm">Riprova</div></div>
+  </div>
+  <div class="sec">Pronti sul server (2)</div>
+  <div class="list">
+    <div class="dlrow"><div class="poster p4 mini"></div><div class="tx"><b>Notte a Pechino</b><span>4,2 GB · si cancella tra 3 giorni</span></div><div class="btn sm">⬇ Scarica</div></div>
+  </div>
+  <div class="sec">Completati <a>Pulisci</a></div>
+</div>${TB('Download')}</div>`,
+['Una sola pagina: in corso, coda, file sul server, completati.',
+ 'L\'avviso «la pagina deve restare aperta» diventa una riga chiara che dice cosa succede.',
+ 'Gli errori dicono cosa è successo e offrono «Riprova» sulla stessa riga.']],
+
+['6 · Impostazioni', `
+${SB}<div class="screen"><div class="scroll">
+  <div class="appbar"><div class="ttl" style="font-size:22px">Impostazioni</div></div>
+  <div class="sec">Download</div>
+  <div class="set-group">
+    <div class="set">Destinazione<span class="v">Questo dispositivo</span></div>
+    <div class="set">Qualità preferita<span class="v">1080p</span></div>
+    <div class="set">Lingua audio<span class="v">Italiano</span></div>
+    <div class="set">File diretti prima degli HLS<div class="toggle"></div></div>
+  </div>
+  <div class="sec">Fonti</div>
+  <div class="set-group">
+    <div class="set">Addon<span class="v"><span class="chip ok">2 attivi</span></span></div>
+    <div class="set">Collega a Nuvio<span class="v">URL e QR</span></div>
+  </div>
+  <div class="sec">Generale</div>
+  <div class="set-group">
+    <div class="set">Lingua dell'interfaccia<span class="v">Italiano</span></div>
+    <div class="set">Tema<span class="v">Automatico</span></div>
+    <div class="set">TMDB<span class="v"><span class="chip ok">✓ key valida</span></span></div>
+  </div>
+  <div class="sec">Avanzate</div>
+  <div class="set-group"><div class="set">Timeout addon, conversioni HLS, spazio<span class="v"></span></div></div>
+</div>${TB('Impostazioni')}</div>`,
+['Raggruppate per scopo; le voci tecniche finiscono in «Avanzate».',
+ 'Le preferenze di download sono quelle che guidano la scelta automatica.',
+ 'Lingua dell\'interfaccia (IT/EN/ES/FR/DE) e lingua dei metadati TMDB sono separate.']],
+
+['7 · Collega a Nuvio', `
+${SB}<div class="screen"><div class="scroll">
+  <div class="appbar"><div class="ico">←</div><div class="ttl">Collega a Nuvio</div></div>
+  <p class="meta" style="font-size:13.5px">Installa questo addon in Nuvio: cercando un titolo compariranno le voci di NoStream da scaricare.</p>
+  <div class="field"><label>URL del manifest</label><div class="input" style="font-size:12px">https://nostream.tuo-tailnet.ts.net/manifest.json</div></div>
+  <div class="btn-row"><div class="btn primary">Copia URL</div><div class="btn">Apri in Nuvio</div></div>
+  <div class="qr"></div>
+  <p class="meta" style="text-align:center">Inquadra dal telefono su cui c'è Nuvio</p>
+  <div class="info"><b>i</b> <span>In Nuvio tieni premuta una voce NoStream e scegli <b>Scarica</b>. Per le serie intere è più affidabile la coda di questa web app.</span></div>
+</div>${TB('Impostazioni')}</div>`,
+['Oggi questa informazione sta solo nel README.',
+ 'L\'URL viene costruito da solo, compreso https dietro Tailscale.']],
+
+['8 · Selezione di più episodi', `
+${SB}<div class="screen"><div class="scroll">
+  <div class="appbar"><div class="ico">✕</div><div class="ttl">3 selezionati</div><div class="btn sm">Tutti</div></div>
+  <div class="tabs" style="margin-top:4px"><div class="tab on">Stagione 1</div><div class="tab">Stagione 2</div><div class="tab">Stagione 3</div></div>
+  <div class="ep"><div class="cb"></div><div class="tx"><b>La luce si spegne</b><span>Già scaricato</span></div></div>
+  <div class="ep"><div class="cb"></div><div class="tx"><b>Il registro del guardiano</b><span>In download</span></div></div>
+  <div class="ep"><div class="cb on">✓</div><div class="tx"><b>Bassa marea</b><span>44 min</span></div></div>
+  <div class="ep"><div class="cb on">✓</div><div class="tx"><b>Segnali dal largo</b><span>46 min</span></div></div>
+  <div class="ep"><div class="cb"></div><div class="tx"><b>La stanza della lente</b><span>41 min</span></div></div>
+  <div class="ep"><div class="cb on">✓</div><div class="tx"><b>Nebbia fitta</b><span>44 min</span></div></div>
+</div>
+<div class="selbar" style="bottom:16px"><div class="btn primary">⬇ Scarica 3 episodi</div></div>
+</div>`,
+['Si entra con ☑ o tenendo premuto un episodio, e si esce con ✕.',
+ 'La barra in basso compare solo qui, non resta sempre sullo schermo.']],
+
+['9 · Link incollato: scheda playlist', `
+${SB}<div class="screen"><div class="scroll">
+  <div class="search" style="margin-top:8px;color:var(--text);font-size:12.5px">⌕ youtube.com/playlist?list=PLx…</div>
+  <div class="hero" style="margin-top:14px">
+    <div class="poster p2" style="width:150px;height:84px"></div>
+    <div>
+      <div class="chip">▶ YouTube · playlist</div>
+      <h2 style="font-size:17px;margin-top:6px">Lezioni di fotografia</h2>
+      <div class="meta">Canale Esempio · 24 video · 6 h 10 min</div>
+    </div>
+  </div>
+  <div class="seg" style="margin-top:14px"><div class="on">Video</div><div>Solo audio</div></div>
+  <div class="btn-row">
+    <div class="btn primary">⬇ Scarica playlist (24)</div>
+    <div class="btn ghost" title="Scegli video">☑</div>
+  </div>
+  <div class="ep"><div class="n">1</div><div class="tx"><b>Esposizione: le basi</b><span>14:02 · 1080p · sul dispositivo</span></div><div class="dl done">✓</div></div>
+  <div class="ep"><div class="n">2</div><div class="tx"><b>Diaframma e profondità di campo</b><span>Sul server · 180 MB di 410 MB</span></div><div class="dl prog" style="--p:44%"><i>44%</i></div></div>
+  <div class="ep"><div class="n">3</div><div class="tx"><b>Tempi di scatto</b><span>In coda</span></div><div class="dl queued">◷</div></div>
+  <div class="ep"><div class="n">4</div><div class="tx"><b>ISO e rumore digitale</b><span>16:47</span></div><div class="dl">↓</div></div>
+  <div class="ep"><div class="n">5</div><div class="tx"><b>La luce naturale</b><span>21:15</span></div><div class="dl">↓</div></div>
+</div>${TB('Cerca')}</div>`,
+['Nella barra di ricerca si può incollare un link di YouTube, o di qualsiasi sito supportato da yt-dlp: invece dei risultati TMDB si apre la scheda del video o della playlist.',
+ 'Stesse icone, stessi pulsanti e stessa selezione multipla degli episodi: non c\'è niente di nuovo da imparare.',
+ '«Solo audio» scarica in m4a/mp3, comodo per musica, podcast e lezioni.',
+ 'Il download passa sempre dal server (yt-dlp + ffmpeg), poi il file arriva al dispositivo.']],
+
+['10 · Impostazioni: video da link', `
+${SB}<div class="screen"><div class="scroll">
+  <div class="appbar"><div class="ico">←</div><div class="ttl">Video da link</div></div>
+  <div class="sec">Formato</div>
+  <div class="set-group">
+    <div class="set">Qualità massima video<span class="v">1080p</span></div>
+    <div class="set">Formato audio<span class="v">m4a</span></div>
+    <div class="set">Incorpora sottotitoli<div class="toggle"></div></div>
+    <div class="set">Numera i file della playlist<div class="toggle"></div></div>
+  </div>
+  <div class="sec">yt-dlp</div>
+  <div class="set-group">
+    <div class="set">Versione<span class="v nochev">2026.10.19</span></div>
+    <div class="set">Aggiorna all'avvio<div class="toggle"></div></div>
+    <div class="set"><span>Aggiorna ora</span><div class="btn sm">Controlla</div></div>
+  </div>
+  <div class="info"><b>i</b> <span>YouTube cambia spesso: se i download smettono di funzionare, quasi sempre basta aggiornare yt-dlp.</span></div>
+</div>${TB('Impostazioni')}</div>`,
+['Nuova voce in Impostazioni → Download.',
+ 'yt-dlp si aggiorna senza ricostruire l\'immagine Docker, all\'avvio o a mano.',
+ 'Per una versione successiva alla 2.0: «segui playlist/canale» per scaricare da soli i video nuovi.']]
+];
+
+const flowWrap = document.getElementById('flow');
+for (const [name, html, notes] of flow) {
+  const fw = document.createElement('div');
+  fw.className = 'frame-wrap';
+  fw.innerHTML = `<h4>${name}</h4><div class="phone t-a">${html}</div><div class="cap"><ol>${notes.map(n => `<li>${n}</li>`).join('')}</ol></div>`;
+  flowWrap.appendChild(fw);
+}
+</script>
+</body>
+</html>
