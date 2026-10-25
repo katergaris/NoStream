@@ -28,7 +28,7 @@ function preparedFilename(p) {
   return `${streamer.sanitizeFilename(p.title || p.streamTitle || 'download')}${ext}`;
 }
 
-const APP_VERSION = '1.9.0';
+const APP_VERSION = '2.0.0-dev';
 
 const app = express();
 app.set('etag', false);
@@ -90,7 +90,7 @@ app.get('/api/streams', asyncRoute(async (req, res) => {
   const stremioId = addons.buildStremioId(imdbId, stremioType, season, episode);
   const addonList = config.listAddons();
   if (addonList.length === 0) {
-    return res.status(400).json({ error: 'Nessun addon configurato (vai nella tab Addon)' });
+    return res.status(400).json({ error: 'Nessun addon configurato: aggiungine uno in Impostazioni → Addon' });
   }
 
   const { streams, errors } = await addons.getStreamsForAllAddons(addonList, stremioType, stremioId);
@@ -135,14 +135,45 @@ app.get('/api/addons', (req, res) => {
   res.json({ addons: config.listAddons() });
 });
 
-app.post('/api/addons', (req, res) => {
-  const { name, manifestUrl } = req.body || {};
-  if (!name || !manifestUrl) {
-    return res.status(400).json({ error: 'name e manifestUrl richiesti' });
+// Legge il manifest di un addon: serve a ricavarne il nome e a dire se risponde e quanto
+// ci mette.
+async function fetchManifest(manifestUrl) {
+  const start = Date.now();
+  const res = await fetch(manifestUrl, { signal: AbortSignal.timeout(10000) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const manifest = await res.json();
+  return { manifest, ms: Date.now() - start };
+}
+
+app.post('/api/addons', asyncRoute(async (req, res) => {
+  const { manifestUrl } = req.body || {};
+  let { name } = req.body || {};
+  if (!manifestUrl || !/^https?:\/\//i.test(String(manifestUrl).trim())) {
+    return res.status(400).json({ error: 'URL del manifest mancante o non valido' });
+  }
+  // Il nome si può omettere: lo prendiamo dal manifest.
+  if (!name) {
+    try {
+      const { manifest } = await fetchManifest(String(manifestUrl).trim());
+      name = manifest.name || new URL(manifestUrl).hostname;
+    } catch (e) {
+      return res.status(400).json({ error: `Manifest non raggiungibile (${e.name === 'TimeoutError' ? 'timeout' : e.message})` });
+    }
   }
   const addon = config.addAddon({ name, manifestUrl });
   res.status(201).json({ addon });
-});
+}));
+
+app.get('/api/addons/:id/check', asyncRoute(async (req, res) => {
+  const addon = config.listAddons().find(a => a.id === req.params.id);
+  if (!addon) return res.status(404).json({ error: 'Addon non trovato' });
+  try {
+    const { ms } = await fetchManifest(addon.manifestUrl);
+    res.json({ ok: true, ms });
+  } catch (e) {
+    res.json({ ok: false, error: e.name === 'TimeoutError' ? 'timeout' : e.message });
+  }
+}));
 
 app.delete('/api/addons/:id', (req, res) => {
   const removed = config.removeAddon(req.params.id);

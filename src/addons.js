@@ -89,6 +89,7 @@ async function getEpisodes(tmdbId, season, apiKey, language) {
     name: e.name,
     overview: e.overview || '',
     airDate: e.air_date || null,
+    runtime: e.runtime || null,
     stillUrl: e.still_path ? IMAGE_BASE + e.still_path : null
   }));
 }
