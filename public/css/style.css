@@ -322,3 +322,5 @@ body.has-selbar .toast { bottom: calc(var(--tabbar-h) + var(--safe-b) + 84px); }
   .btn:hover { filter: brightness(1.06); }
   .row.tap:hover, .src.tap:hover, .set.tap:hover { background: color-mix(in srgb, var(--surface2) 50%, transparent); }
 }
+.group.dimmed { opacity: .55; }
+.err-text { color: var(--err) !important; }

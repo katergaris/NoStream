@@ -11,6 +11,7 @@
 
 const crypto = require('crypto');
 const config = require('./config');
+const plugins = require('./plugins');
 
 // NUVIO_BACKEND serve per le prove o per un backend Nuvio self-hosted.
 const DEFAULT_BACKEND = process.env.NUVIO_BACKEND || 'https://api.nuvio.tv';
@@ -141,6 +142,10 @@ function sync() {
     const profile = profiles.find(p => p.profile_index === profileId);
     const source = profile && profile.uses_primary_addons ? 1 : profileId;
     const rows = await rest(`addons?select=url,name,enabled,sort_order,profile_id&profile_id=eq.${source}&order=sort_order.asc`);
+    // Plugin (provider JavaScript): repository nella tabella `plugins`, stessa logica dei profili
+    const pluginSource = profile && profile.uses_primary_plugins ? 1 : profileId;
+    const pluginRows = await rest(`plugins?select=url,name,enabled,sort_order,profile_id,repo_type&profile_id=eq.${pluginSource}&order=sort_order.asc`).catch(() => []);
+    const pluginReport = await plugins.refresh(pluginRows);
 
     const seen = new Set();
     const report = await Promise.all(rows.map(async row => {
@@ -174,11 +179,12 @@ function sync() {
       ...cfg.nuvio,
       profiles: profiles.map(p => ({ index: p.profile_index, name: p.name, usesPrimary: !!p.uses_primary_addons })),
       report,
+      pluginReport,
       lastSync: Date.now(),
       error: null
     };
     config.save(cfg);
-    console.log(`[nuvio] sincronizzati ${rows.length} addon (profilo ${profileId}), ${fromNuvio.length} usati come fonti`);
+    console.log(`[nuvio] sincronizzati ${rows.length} addon (profilo ${profileId}), ${fromNuvio.length} usati come fonti; ${pluginReport.reduce((n, r) => n + r.scrapers.length, 0)} plugin in ${pluginReport.length} repository`);
     return status();
   })().catch(e => {
     saveState({ error: e.message });
@@ -210,8 +216,45 @@ function status() {
       ms: r.ms || null,
       version: r.version || null,
       used: r.status === 'usable' && !excluded.has(r.id)
+    })),
+    plugins: pluginStatus(s)
+  };
+}
+
+function pluginStatus(s) {
+  const ps = s.plugins || {};
+  const excluded = new Set(ps.excluded || []);
+  return {
+    enabled: !!ps.enabled,
+    repos: (s.pluginReport || []).map(r => ({
+      id: r.id, name: r.name, host: r.host, enabled: r.enabled, error: r.error,
+      scrapers: r.scrapers.map(x => {
+        const st = plugins.statsFor(x.key);
+        return {
+          key: x.key, name: x.name, version: x.version, types: x.types, langs: x.langs, formats: x.formats,
+          status: x.status === 'ok' && !plugins.hasCode(x.key) ? 'unreachable' : x.status,
+          error: x.error,
+          used: !excluded.has(x.key) && x.status === 'ok',
+          last: st
+        };
+      })
     }))
   };
+}
+
+function setPluginsEnabled(enabled) {
+  const s = state() || {};
+  saveState({ plugins: { ...(s.plugins || {}), enabled: !!enabled } });
+  return status();
+}
+
+function setPluginUsed(key, used) {
+  const s = state() || {};
+  const ps = s.plugins || {};
+  const excluded = new Set(ps.excluded || []);
+  if (used) excluded.delete(key); else excluded.add(key);
+  saveState({ plugins: { ...ps, excluded: [...excluded] } });
+  return status();
 }
 
 async function setProfile(profileId) {
@@ -253,4 +296,4 @@ function init() {
   setInterval(run, SYNC_EVERY_MS).unref();
 }
 
-module.exports = { init, login, sync, status, setProfile, setUsed, logout };
+module.exports = { init, login, sync, status, setProfile, setUsed, setPluginsEnabled, setPluginUsed, logout };
