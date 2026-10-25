@@ -9,3 +9,5 @@ services:
     volumes:
       # deve essere un FILE già esistente (cp config.example.json config.json)
       - ./config.json:/app/config.json
+      # file preparati sul server, video da link e aggiornamenti di yt-dlp
+      - ./data:/app/data

@@ -199,6 +199,8 @@ const state = {
   selecting: false,
   selected: new Set(),
   streamCache: new Map(),
+  link: storageGet('nostream.link'),  // video o playlist aperta da link (yt-dlp)
+  linkMode: 'video',   // video | audio
   settings: null,      // impostazioni del server (/api/settings)
   addons: null
 };
@@ -212,6 +214,8 @@ const ROUTES = {
   '#impostazioni/nuvio': 'settings',
   '#impostazioni/tmdb': 'settings',
   '#impostazioni/avanzate': 'settings',
+  '#impostazioni/link': 'settings',
+  '#link': 'link',
   '#benvenuto': 'welcome'
 };
 
@@ -220,18 +224,20 @@ function currentView() { return ROUTES[location.hash] || 'search'; }
 function route() {
   let view = currentView();
   if (view === 'detail' && !state.item) { location.replace('#'); return; }
+  if (view === 'link' && !state.link) { location.replace('#'); return; }
   $all('.view').forEach(v => v.classList.toggle('active', v.id === `view-${view}`));
   $all('#tabbar a').forEach(a => a.classList.toggle('active',
-    a.dataset.tab === view || (view === 'detail' && a.dataset.tab === 'search')));
+    a.dataset.tab === view || ((view === 'detail' || view === 'link') && a.dataset.tab === 'search')));
   $('#tabbar').hidden = view === 'welcome';
   closeSheet();
-  if (view !== 'detail') exitSelection(false);
+  if (view !== 'detail' && view !== 'link') exitSelection(false);
   window.scrollTo(0, 0);
   if (view === 'search') renderSearch();
   if (view === 'detail') renderDetail();
   if (view === 'downloads') { renderDownloads(); refreshServerFiles(); }
   if (view === 'settings') renderSettings(location.hash.split('/')[1] || '');
   if (view === 'welcome') renderWelcome();
+  if (view === 'link') renderLink();
   updateSelbar();
 }
 
@@ -363,9 +369,12 @@ function renderHomeActive() {
   box.appendChild(card);
 }
 
+function looksLikeUrl(s) { return /^https?:\/\/\S+$/i.test(s) || /^(www\.)?(youtube\.com|youtu\.be|m\.youtube\.com)\//i.test(s); }
+
 async function runSearch(raw) {
   const query = raw.trim();
   if (!query) return;
+  if (looksLikeUrl(query)) { openLink(/^https?:/i.test(query) ? query : `https://${query}`); return; }
   state.query = query;
   state.results = 'loading';
   renderSearch();
@@ -652,6 +661,7 @@ function exitSelection(rerender = true) {
   state.selecting = false;
   state.selected.clear();
   if (rerender && currentView() === 'detail') renderDetail();
+  if (rerender && currentView() === 'link') renderLink();
   updateSelbar();
 }
 
@@ -686,18 +696,181 @@ function renderSelectionHeader() {
 
 function updateSelbar() {
   const bar = $('#selbar');
-  const show = state.selecting && currentView() === 'detail';
+  const view = currentView();
+  const show = state.selecting && (view === 'detail' || view === 'link');
   bar.hidden = !show;
   document.body.classList.toggle('has-selbar', show);
   if (!show) return;
   bar.innerHTML = '';
   const n = state.selected.size;
+  if (view === 'link') {
+    bar.appendChild(el('button', { class: 'btn primary', type: 'button', disabled: !n, onclick: () => {
+      const entries = state.link.entries.filter(e => state.selected.has(e.index));
+      exitSelection(false);
+      enqueueLinks(entries, { force: true });
+      renderLink();
+    } }, [icon('download'), n ? t('link.selectDownload', { n }) : t('link.selectHint')]));
+    return;
+  }
   bar.appendChild(el('button', { class: 'btn primary', type: 'button', disabled: !n, onclick: () => {
     const eps = state.episodes.filter(ep => state.selected.has(ep.episodeNumber));
     exitSelection(false);
     enqueueEpisodes(eps, { force: true });
     renderDetail();
   } }, [icon('download'), n ? t('select.download', { n }) : t('select.hint')]));
+}
+
+// ============================================================ Video da link (yt-dlp)
+
+async function openLink(url) {
+  state.results = 'loading';
+  renderSearch();
+  $('#search-input').blur();
+  const body = $('#search-body');
+  body.innerHTML = '';
+  body.appendChild(el('div', { class: 'empty' }, [el('b', {}, t('link.reading')), t('link.readingHint')]));
+  try {
+    const info = await api('/link/info', { method: 'POST', body: JSON.stringify({ url }) });
+    state.link = info;
+    storageSet('nostream.link', info);
+    state.results = null;
+    state.query = '';
+    exitSelection(false);
+    go('#link');
+  } catch (err) {
+    state.results = null;
+    if (currentView() === 'search') renderSearch();
+    toast(t('link.failed', { msg: err.message }), true);
+  }
+}
+
+function formatDuration(sec) {
+  if (!sec) return '';
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
+  return h ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+}
+
+function formatLongDuration(sec) {
+  if (sec < 60) return formatDuration(sec);
+  const h = Math.floor(sec / 3600);
+  const m = Math.round((sec % 3600) / 60);
+  return h ? t('link.hoursMinutes', { h, m }) : t('detail.minutes', { n: m });
+}
+
+function linkQueueItem(entry) { return queueItemFor(linkKey(entry, state.linkMode)); }
+
+function linkEntriesToDownload() {
+  return state.link.entries.filter(e => {
+    const q = linkQueueItem(e);
+    return !q || q.status === 'error';
+  });
+}
+
+function renderLink() {
+  const link = state.link;
+  const view = $('#view-link');
+  view.innerHTML = '';
+  const isList = link.kind === 'playlist';
+
+  if (state.selecting) {
+    const all = link.entries.filter(e => { const q = linkQueueItem(e); return !q || q.status === 'error' || q.status === 'done'; });
+    const allOn = all.length && all.every(e => state.selected.has(e.index));
+    view.appendChild(el('div', { class: 'appbar' }, [
+      el('button', { class: 'icon-btn', type: 'button', 'aria-label': t('common.cancel'), onclick: () => exitSelection() }, icon('x')),
+      el('div', { class: 'ttl' }, t('select.count', { n: state.selected.size })),
+      el('button', { class: 'btn sm', type: 'button', onclick: () => {
+        state.selected = allOn ? new Set() : new Set(all.map(e => e.index));
+        renderLink();
+        updateSelbar();
+      } }, allOn ? t('select.none') : t('select.all'))
+    ]));
+  } else {
+    view.appendChild(el('div', { class: 'appbar' }, [
+      el('button', { class: 'icon-btn', type: 'button', 'aria-label': t('common.back'),
+        onclick: () => (history.length > 1 ? history.back() : go('')) }, icon('back')),
+      el('div', { class: 'ttl' }, '')
+    ]));
+  }
+
+  view.appendChild(el('div', { class: 'hero link-hero' }, [
+    el('div', { class: 'poster wide' }, link.thumbnail ? el('img', { src: link.thumbnail, alt: '', loading: 'lazy' }) : null),
+    el('div', { style: 'min-width:0' }, [
+      el('span', { class: 'chip' }, [link.site || t('link.site'), ' · ', isList ? t('link.playlist') : t('link.video')]),
+      el('h2', { style: 'margin-top:6px' }, link.title),
+      el('div', { class: 'meta' }, [
+        link.uploader,
+        isList ? t('link.videos', { n: link.entries.length }) : null,
+        link.duration ? formatLongDuration(link.duration) : null
+      ].filter(Boolean).join(' · '))
+    ])
+  ]));
+
+  view.appendChild(el('div', { class: 'seg' }, [
+    el('button', { type: 'button', class: state.linkMode === 'video' ? 'on' : '', onclick: () => { state.linkMode = 'video'; exitSelection(false); renderLink(); } }, t('link.modeVideo')),
+    el('button', { type: 'button', class: state.linkMode === 'audio' ? 'on' : '', onclick: () => { state.linkMode = 'audio'; exitSelection(false); renderLink(); } }, t('link.modeAudio'))
+  ]));
+
+  if (!state.selecting) view.appendChild(linkActions());
+
+  const list = el('div', { id: 'link-list', style: 'margin-top:10px' });
+  for (const e of link.entries) list.appendChild(linkEntryRow(e));
+  view.appendChild(list);
+}
+
+function linkActions() {
+  const link = state.link;
+  const isList = link.kind === 'playlist';
+  const todo = linkEntriesToDownload();
+  const label = !todo.length
+    ? t('link.allQueued')
+    : isList
+      ? (todo.length === link.entries.length ? t('link.downloadPlaylist', { n: todo.length }) : t('link.downloadMissing', { n: todo.length }))
+      : state.linkMode === 'audio' ? t('link.downloadAudio') : t('link.downloadVideo');
+  return el('div', { class: 'btn-row', id: 'link-actions', 'data-sig': `${todo.length}|${label}` }, [
+    el('button', { class: 'btn primary', type: 'button', disabled: !todo.length, onclick: () => enqueueLinks(todo) }, [icon('download'), label]),
+    isList ? el('button', { class: 'btn square', type: 'button', title: t('link.selectVideos'), 'aria-label': t('link.selectVideos'),
+      onclick: () => { state.selecting = true; state.selected.clear(); renderLink(); updateSelbar(); } }, icon('select')) : null
+  ]);
+}
+
+function linkEntryRow(e) {
+  const q = linkQueueItem(e);
+  const sub = q ? itemStatusText(q) : formatDuration(e.duration);
+  if (state.selecting) {
+    const selectable = !q || q.status === 'error' || q.status === 'done';
+    const on = state.selected.has(e.index);
+    return el('button', {
+      class: 'row tap' + (selectable ? '' : ' disabled'), type: 'button', 'data-i': e.index, 'data-sig': `s${on}${selectable}`,
+      disabled: !selectable, onclick: () => {
+        if (state.selected.has(e.index)) state.selected.delete(e.index); else state.selected.add(e.index);
+        renderLink();
+        updateSelbar();
+      }
+    }, [el('span', { class: 'cb' + (on ? ' on' : '') }, icon('check')), el('span', { class: 'tx' }, [el('b', {}, e.title), el('span', {}, sub)])]);
+  }
+  const sig = q ? `${q.status}|${progressPct(q)}|${sub}` : 'none';
+  return el('div', { class: 'row', 'data-i': e.index, 'data-sig': sig }, [
+    state.link.kind === 'playlist' ? el('span', { class: 'n' }, e.index) : null,
+    el('span', { class: 'tx' }, [el('b', {}, e.title), el('span', { class: q && q.status === 'error' ? 'err' : '' }, sub)]),
+    statusButton(q, () => enqueueLinks([e]), () => enqueueLinks([e], { force: true }))
+  ]);
+}
+
+function refreshLinkRows() {
+  if (currentView() !== 'link' || !state.link || state.selecting) return;
+  for (const row of $all('#link-list .row')) {
+    const e = state.link.entries.find(x => x.index === Number(row.dataset.i));
+    if (!e) continue;
+    const fresh = linkEntryRow(e);
+    if (fresh.dataset.sig !== row.dataset.sig) row.replaceWith(fresh);
+  }
+  const actions = $('#link-actions');
+  if (actions) {
+    const fresh = linkActions();
+    if (fresh.dataset.sig !== actions.dataset.sig) actions.replaceWith(fresh);
+  }
 }
 
 // ============================================================ Pannello «Scegli fonte»
@@ -858,17 +1031,52 @@ function loadQueue() {
 
 function saveQueue() { storageSet(QUEUE_STORAGE, { items: queue.items, running: queue.running }); }
 
+function linkKey(entry, mode) { return `link:${mode}:${entry.url}`; }
+
+function enqueueLinks(entries, opts = {}) {
+  const link = state.link;
+  const mode = state.linkMode;
+  enqueue(entries.map(e => ({
+    link: { url: e.url, mode, index: link.kind === 'playlist' ? e.index : null },
+    key: linkKey(e, mode),
+    title: e.title,
+    epName: link.kind === 'playlist' ? link.title : (link.uploader || null),
+    posterUrl: e.thumbnail || link.thumbnail,
+    force: opts.force
+  })));
+}
+
 function enqueueEpisodes(episodes, opts = {}) {
   enqueue(episodes.map(ep => ({ item: state.item, season: state.season, episode: ep.episodeNumber, epName: ep.name, force: opts.force })));
 }
 
 function enqueue(entries) {
   let added = 0;
-  for (const { item, season, episode, epName, pinned, dest, force } of entries) {
-    const key = queueKey(item.type, item.tmdbId, season, episode);
+  for (const entry of entries) {
+    const { item, season, episode, epName, pinned, dest, force } = entry;
+    const key = entry.link ? entry.key : queueKey(item.type, item.tmdbId, season, episode);
     const existing = queueItemFor(key);
     if (existing && existing.status !== 'error' && !(force && existing.status === 'done')) continue;
     if (existing) queue.items.splice(queue.items.indexOf(existing), 1);
+    if (entry.link) {
+      queue.items.push({
+        id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
+        key,
+        type: 'link',
+        link: entry.link,
+        title: entry.title,
+        subtitle: epName || null,
+        posterUrl: entry.posterUrl || null,
+        dest: 'server',
+        tried: [],
+        status: 'pending',
+        sent: 0,
+        total: null,
+        error: null
+      });
+      added++;
+      continue;
+    }
     queue.items.push({
       id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
       key,
@@ -952,7 +1160,30 @@ function triggerDownload(url) {
   a.remove();
 }
 
+async function startLinkItem(item) {
+  item.status = 'resolving';
+  item.error = null;
+  saveQueue();
+  try {
+    const { item: job } = await api('/link/jobs', {
+      method: 'POST',
+      body: JSON.stringify({ url: item.link.url, mode: item.link.mode, title: item.title, index: item.link.index })
+    });
+    if (!queue.items.includes(item)) return;
+    item.prepKey = job.key;
+    item.stream = { kind: 'link', quality: item.link.mode === 'audio' ? t('link.audioShort') : null };
+    item.status = 'preparing';
+    item.sent = 0;
+    item.total = null;
+  } catch (err) {
+    failItem(item, err.message);
+  }
+  saveQueue();
+  refreshServerFiles();
+}
+
 async function startItem(item) {
+  if (item.type === 'link') return startLinkItem(item);
   item.status = 'resolving';
   item.error = null;
   saveQueue();
@@ -1064,7 +1295,11 @@ async function pollItem(item) {
 async function pollPrepared(item) {
   await refreshServerFiles();
   const job = serverFiles.find(f => f.key === item.prepKey);
-  if (!job) { retryWithNext(item, t('queue.serverGone')); return; }
+  if (!job) {
+    if (item.type === 'link') failItem(item, t('queue.serverGone'));
+    else retryWithNext(item, t('queue.serverGone'));
+    return;
+  }
   item.sent = job.written || 0;
   if (job.size) item.total = job.size;
   if (job.status === 'done') {
@@ -1072,7 +1307,9 @@ async function pollPrepared(item) {
     item.note = 'server';
     triggerDownload(job.path);
   } else if (job.status === 'failed') {
-    retryWithNext(item, job.error || t('queue.serverFailed'));
+    // Per i link non ci sono fonti alternative: l'errore di yt-dlp va mostrato così com'è.
+    if (item.type === 'link') failItem(item, job.error || t('queue.serverFailed'));
+    else retryWithNext(item, job.error || t('queue.serverFailed'));
   }
   saveQueue();
 }
@@ -1126,7 +1363,9 @@ function progressText(item) {
     case 'starting': return item.stream && item.stream.kind === 'hls' ? t('status.startingHls') : t('status.starting');
     case 'downloading': return item.sent ? t('status.downloadingOf', { of }) : t('status.downloading');
     case 'interrupted': return t('status.interrupted', { of: of || '0 MB' });
-    case 'preparing': return item.sent ? t('status.preparingOf', { of }) : t('status.preparing');
+    case 'preparing':
+      if (item.type === 'link') return item.sent ? t('status.linkOf', { of }) : t('status.linkStarting');
+      return item.sent ? t('status.preparingOf', { of }) : t('status.preparing');
     default: return '';
   }
 }
@@ -1153,6 +1392,7 @@ function refreshQueueViews() {
   const view = currentView();
   if (view === 'downloads') renderDownloads();
   if (view === 'detail') refreshEpisodeRows();
+  if (view === 'link') refreshLinkRows();
   if (view === 'search') renderHomeActive();
 }
 
@@ -1208,7 +1448,7 @@ function renderDownloads() {
         el('div', { class: 'tx' }, [
           el('b', {}, item.title),
           el('span', {}, progressText(item)),
-          item.stream ? el('span', {}, [item.stream.kind === 'hls' ? t('kind.hls') : t('kind.direct'), item.stream.addon].join(' · ')) : null,
+          item.stream && item.stream.kind !== 'link' ? el('span', {}, [item.stream.kind === 'hls' ? t('kind.hls') : t('kind.direct'), item.stream.addon].join(' · ')) : null,
           progressBar(item)
         ]),
         el('button', { class: 'icon-btn', type: 'button', 'aria-label': t('downloads.remove'), onclick: () => removeItem(item) }, icon('x'))
@@ -1226,7 +1466,7 @@ function renderDownloads() {
         el('div', { class: 'tx' }, [
           el('b', {}, item.title),
           item.subtitle ? el('span', {}, item.subtitle) : null,
-          el('span', { class: isErr ? 'err' : '' }, [itemStatusText(item), item.dest === 'server' ? ` · ${t('dest.serverShort')}` : ''].join(''))
+          el('span', { class: isErr ? 'err' : '' }, [itemStatusText(item), item.dest === 'server' && item.type !== 'link' ? ` · ${t('dest.serverShort')}` : ''].join(''))
         ]),
         isErr
           ? el('button', { class: 'btn sm', type: 'button', onclick: () => retryItem(item) }, t('common.retry'))
@@ -1375,6 +1615,7 @@ function renderSettings(page) {
   if (page === 'nuvio') return renderNuvioPage(view);
   if (page === 'tmdb') return renderTmdbPage(view);
   if (page === 'avanzate') return renderAdvancedPage(view);
+  if (page === 'link') return renderLinkSettingsPage(view);
 
   const s = state.settings || {};
   const rerender = () => renderSettings('');
@@ -1385,7 +1626,8 @@ function renderSettings(page) {
     selectRow(t('settings.dest'), prefs.dest, [['device', t('dest.device')], ['server', t('dest.server')]], v => { setPref('dest', v); rerender(); }),
     selectRow(t('settings.quality'), prefs.quality, QUALITY_OPTIONS.map(q => [q, t(`quality.${q}`)]), v => { setPref('quality', v); rerender(); }),
     selectRow(t('settings.audio'), prefs.audio, AUDIO_OPTIONS.map(l => [l, t(`lang.${l}`)]), v => { setPref('audio', v); rerender(); }),
-    switchRow(t('settings.directFirst'), prefs.directFirst, v => setPref('directFirst', v), t('settings.directFirstHint'))
+    switchRow(t('settings.directFirst'), prefs.directFirst, v => setPref('directFirst', v), t('settings.directFirstHint')),
+    linkRow(t('settings.linkVideos'), t('settings.linkVideosValue'), '#impostazioni/link')
   ]));
   view.appendChild(el('div', { class: 'meta', style: 'margin:6px 4px 0' }, t('settings.prefsHint')));
 
@@ -1547,6 +1789,49 @@ function renderTmdbPage(view) {
   view.appendChild(el('p', { class: 'lead' }, t('tmdb.lead')));
   view.lastChild.append(' ', el('a', { href: 'https://www.themoviedb.org/settings/api', target: '_blank', rel: 'noopener' }, 'themoviedb.org/settings/api'));
   view.appendChild(tmdbForm(() => go('#impostazioni')));
+}
+
+// ---- Video da link
+
+async function saveYtdlp(patch) {
+  try {
+    state.settings = await api('/settings', { method: 'POST', body: JSON.stringify({ ytdlp: { ...(state.settings.ytdlp || {}), ...patch } }) });
+  } catch (err) { toast(err.message, true); }
+  renderSettings('link');
+}
+
+function renderLinkSettingsPage(view) {
+  const y = (state.settings && state.settings.ytdlp) || {};
+  view.appendChild(subAppbar(t('settings.linkVideos')));
+  view.appendChild(el('p', { class: 'lead' }, t('ytdlp.lead')));
+  view.appendChild(el('div', { class: 'sec' }, t('ytdlp.format')));
+  view.appendChild(el('div', { class: 'group' }, [
+    selectRow(t('ytdlp.maxHeight'), String(y.maxHeight || 1080), ['2160', '1440', '1080', '720', '480'].map(h => [h, h === '2160' ? '4K (2160p)' : `${h}p`]),
+      v => saveYtdlp({ maxHeight: Number(v) })),
+    selectRow(t('ytdlp.audioFormat'), y.audioFormat || 'm4a', [['m4a', 'm4a (AAC)'], ['mp3', 'mp3'], ['opus', 'opus']], v => saveYtdlp({ audioFormat: v })),
+    switchRow(t('ytdlp.embedSubs'), !!y.embedSubs, v => saveYtdlp({ embedSubs: v })),
+    switchRow(t('ytdlp.numberFiles'), y.numberFiles !== false, v => saveYtdlp({ numberFiles: v }), t('ytdlp.numberFilesHint'))
+  ]));
+  view.appendChild(el('div', { class: 'sec' }, 'yt-dlp'));
+  const versionVal = el('span', { class: 'v' }, '…');
+  const updateBtn = el('button', { class: 'btn sm', type: 'button', onclick: async () => {
+    updateBtn.disabled = true;
+    updateBtn.textContent = t('ytdlp.updating');
+    try {
+      const r = await api('/ytdlp/update', { method: 'POST' });
+      toast(r.before === r.after ? t('ytdlp.upToDate', { v: r.after }) : t('ytdlp.updated', { v: r.after }));
+      versionVal.textContent = r.after || '?';
+    } catch (err) { toast(err.message, true); }
+    updateBtn.disabled = false;
+    updateBtn.textContent = t('ytdlp.updateNow');
+  } }, t('ytdlp.updateNow'));
+  view.appendChild(el('div', { class: 'group' }, [
+    el('div', { class: 'set' }, [el('span', {}, t('ytdlp.version')), versionVal]),
+    switchRow(t('ytdlp.autoUpdate'), y.autoUpdate !== false, v => saveYtdlp({ autoUpdate: v }), t('ytdlp.autoUpdateHint')),
+    el('div', { class: 'set' }, [el('span', {}, t('ytdlp.update')), updateBtn])
+  ]));
+  view.appendChild(el('div', { class: 'note' }, [icon('info'), el('span', {}, t('ytdlp.note'))]));
+  api('/ytdlp').then(r => { versionVal.textContent = r.version || t('ytdlp.missing'); }).catch(() => { versionVal.textContent = '?'; });
 }
 
 // ---- Avanzate

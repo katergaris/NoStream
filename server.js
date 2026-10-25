@@ -7,6 +7,7 @@ const streamer = require('./src/streamer');
 const extractor = require('./src/extractor');
 const progress = require('./src/progress');
 const prepared = require('./src/prepared');
+const ytdlp = require('./src/ytdlp');
 
 const cfg = config.get();
 
@@ -21,6 +22,7 @@ async function resolvePayloadSource(p, { fresh = false } = {}) {
 }
 prepared.setResolver(resolvePayloadSource);
 prepared.init();
+ytdlp.init();
 
 // Nome del file preparato: titolo + estensione della fonte (gli scraper danno .mp4).
 function preparedFilename(p) {
@@ -107,26 +109,23 @@ app.get('/api/streams', asyncRoute(async (req, res) => {
 
 // ---- Impostazioni ----
 
-app.get('/api/settings', (req, res) => {
-  const current = config.get();
-  res.json({
+function settingsView(current) {
+  return {
     tmdbApiKey: current.tmdbApiKey,
     language: current.language,
     concurrentDownloads: current.concurrentDownloads,
     addonTimeoutMs: current.addonTimeoutMs,
+    ytdlp: ytdlp.settings(),
     version: APP_VERSION
-  });
+  };
+}
+
+app.get('/api/settings', (req, res) => {
+  res.json(settingsView(config.get()));
 });
 
 app.post('/api/settings', (req, res) => {
-  const updated = config.updateSettings(req.body || {});
-  res.json({
-    tmdbApiKey: updated.tmdbApiKey,
-    language: updated.language,
-    concurrentDownloads: updated.concurrentDownloads,
-    addonTimeoutMs: updated.addonTimeoutMs,
-    version: APP_VERSION
-  });
+  res.json(settingsView(config.updateSettings(req.body || {})));
 });
 
 // ---- Addons CRUD ----
@@ -311,8 +310,10 @@ app.get('/api/download', asyncRoute(async (req, res) => {
 
 // ---- Preparazione sul server ----
 
+// File sul server: preparati dagli addon e scaricati da link con yt-dlp, in un'unica lista.
 app.get('/api/prepared', (req, res) => {
-  res.json({ items: prepared.list() });
+  const items = [...prepared.list(), ...ytdlp.list()].sort((a, b) => b.createdAt - a.createdAt);
+  res.json({ items });
 });
 
 app.post('/api/prepared', (req, res) => {
@@ -328,7 +329,7 @@ app.post('/api/prepared', (req, res) => {
 });
 
 app.delete('/api/prepared/:key', (req, res) => {
-  if (!prepared.remove(req.params.key)) return res.status(404).json({ error: 'Non trovato' });
+  if (!prepared.remove(req.params.key) && !ytdlp.remove(req.params.key)) return res.status(404).json({ error: 'Non trovato' });
   res.status(204).end();
 });
 
@@ -338,6 +339,51 @@ app.get('/api/prepared/:key/:filename', asyncRoute(async (req, res) => {
   if (!job) return res.status(404).json({ error: 'File non più presente sul server' });
   if (!(await prepared.serve(job, req, res)) && !res.headersSent) {
     res.status(502).json({ error: job.error || 'Preparazione non riuscita' });
+  }
+}));
+
+// ---- Video da link (yt-dlp) ----
+
+function checkLinkUrl(url) {
+  if (!url || !/^https?:\/\//i.test(String(url).trim())) {
+    const e = new Error('Link mancante o non valido');
+    e.status = 400;
+    throw e;
+  }
+  return String(url).trim();
+}
+
+app.post('/api/link/info', asyncRoute(async (req, res) => {
+  const url = checkLinkUrl(req.body && req.body.url);
+  try {
+    res.json(await ytdlp.info(url));
+  } catch (e) {
+    res.status(422).json({ error: e.message });
+  }
+}));
+
+app.post('/api/link/jobs', (req, res) => {
+  const { url, mode, title, index } = req.body || {};
+  const job = ytdlp.ensure({ url: checkLinkUrl(url), mode, title, index: parseInt(index, 10) || null });
+  res.status(201).json({ item: ytdlp.publicView(job) });
+});
+
+app.get('/api/link/:key/:filename', (req, res) => {
+  logDownloadConnection(req, res);
+  const job = ytdlp.get(req.params.key);
+  if (!job) return res.status(404).json({ error: 'File non più presente sul server' });
+  ytdlp.serve(job, req, res);
+});
+
+app.get('/api/ytdlp', asyncRoute(async (req, res) => {
+  res.json({ version: await ytdlp.version(), settings: ytdlp.settings() });
+}));
+
+app.post('/api/ytdlp/update', asyncRoute(async (req, res) => {
+  try {
+    res.json(await ytdlp.update());
+  } catch (e) {
+    res.status(502).json({ error: `Aggiornamento non riuscito: ${e.message}` });
   }
 }));
 

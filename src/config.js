@@ -68,7 +68,7 @@ function removeAddon(id) {
   return cfg.addons.length !== before;
 }
 
-function updateSettings({ tmdbApiKey, language, concurrentDownloads, addonTimeoutMs }) {
+function updateSettings({ tmdbApiKey, language, concurrentDownloads, addonTimeoutMs, ytdlp }) {
   const cfg = load();
   if (tmdbApiKey !== undefined) cfg.tmdbApiKey = String(tmdbApiKey).trim();
   if (language !== undefined) cfg.language = String(language).trim() || 'it-IT';
@@ -79,6 +79,17 @@ function updateSettings({ tmdbApiKey, language, concurrentDownloads, addonTimeou
   if (addonTimeoutMs !== undefined) {
     const n = parseInt(addonTimeoutMs, 10);
     if (Number.isFinite(n) && n >= 5000) cfg.addonTimeoutMs = n;
+  }
+  if (ytdlp && typeof ytdlp === 'object') {
+    // Impostazioni di yt-dlp (video da link): solo valori ammessi
+    const y = { ...(cfg.ytdlp || {}) };
+    const h = parseInt(ytdlp.maxHeight, 10);
+    if ([480, 720, 1080, 1440, 2160].includes(h)) y.maxHeight = h;
+    if (['m4a', 'mp3', 'opus'].includes(ytdlp.audioFormat)) y.audioFormat = ytdlp.audioFormat;
+    for (const k of ['embedSubs', 'numberFiles', 'autoUpdate']) {
+      if (typeof ytdlp[k] === 'boolean') y[k] = ytdlp[k];
+    }
+    cfg.ytdlp = y;
   }
   save(cfg);
   return cfg;
