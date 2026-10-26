@@ -166,7 +166,10 @@ function partName(abs, isPlaylistLine, { subtitles = false } = {}) {
   try { ext = (new URL(abs).pathname.match(/\.([a-z0-9]+)$/i) || [])[1] || ''; } catch {}
   ext = ext.toLowerCase();
   if (ext === 'm3u8' || isPlaylistLine) return subtitles ? 'subs.m3u8' : 'index.m3u8';
-  return `seg.${SEGMENT_EXT.has(ext) ? ext : (subtitles ? 'vtt' : 'ts')}`;
+  // Nelle tracce di sottotitoli i segmenti sono WebVTT anche quando l'URL dice .ts
+  // (alcuni proxy HLS chiamano «segment.ts» ogni pezzo).
+  if (subtitles) return 'seg.vtt';
+  return `seg.${SEGMENT_EXT.has(ext) ? ext : 'ts'}`;
 }
 
 // Playlist HLS: ogni URI (segmenti, varianti, chiavi, sottotitoli) passa da NoStream.
