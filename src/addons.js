@@ -66,6 +66,18 @@ async function searchMulti(query, apiKey, language) {
     }));
 }
 
+// Il titolo è d'animazione (genere TMDB 16)? Serve ai plugin solo anime/cartoni.
+const animationCache = new Map();
+async function isAnimation(tmdbId, type, apiKey) {
+  const key = `${type}:${tmdbId}`;
+  if (animationCache.has(key)) return animationCache.get(key);
+  const data = await tmdbFetch(`/${type === 'tv' ? 'tv' : 'movie'}/${tmdbId}`, apiKey);
+  const result = (data.genres || []).some(g => g.id === 16);
+  if (animationCache.size > 2000) animationCache.clear();
+  animationCache.set(key, result);
+  return result;
+}
+
 async function getImdbId(tmdbId, type, apiKey) {
   const data = await tmdbFetch(`/${type}/${tmdbId}/external_ids`, apiKey);
   return data.imdb_id || null;
@@ -106,6 +118,7 @@ async function findByImdbId(imdbId, mediaType, apiKey, language) {
   const r = results[0];
   return {
     tmdbId: r.id,
+    animation: (r.genre_ids || []).includes(16),
     title: r.title || r.name || null,
     year: (r.release_date || r.first_air_date || '').slice(0, 4) || null
   };
@@ -170,6 +183,7 @@ async function getStreamsForAllAddons(addons, stremioType, stremioId) {
 module.exports = {
   searchMulti,
   getImdbId,
+  isAnimation,
   getSeasons,
   getEpisodes,
   buildStremioId,

@@ -101,7 +101,10 @@ app.get('/api/streams', asyncRoute(async (req, res) => {
 
   const [fromAddons, fromPlugins] = await Promise.all([
     addons.getStreamsForAllAddons(addonList, stremioType, stremioId),
-    plugins.getStreams(tmdbId, type === 'tv' ? 'tv' : 'movie', season ? Number(season) : null, episode ? Number(episode) : null, cfg.addonTimeoutMs)
+    pluginsOn
+      ? addons.isAnimation(tmdbId, type, cfg.tmdbApiKey).catch(() => false)
+        .then(animation => plugins.getStreams(tmdbId, type === 'tv' ? 'tv' : 'movie', season ? Number(season) : null, episode ? Number(episode) : null, cfg.addonTimeoutMs, { animation }))
+      : { streams: [], errors: [] }
   ]);
   const streams = [...fromAddons.streams, ...fromPlugins.streams];
   const errors = [...fromAddons.errors, ...fromPlugins.errors];
@@ -548,12 +551,14 @@ async function probeDirectSize(s) {
       signal: AbortSignal.timeout(SIZE_PROBE_TIMEOUT_MS)
     });
     if (r.body) r.body.cancel().catch(() => {});
+    // Playlist HLS con un URL senza «.m3u8» (succede con alcuni plugin e addon)
+    if (/mpegurl/i.test(r.headers.get('content-type') || '')) return { hls: true, size: null };
     const total = (r.headers.get('content-range') || '').split('/')[1];
     const size = parseInt(total || (r.status === 200 ? r.headers.get('content-length') : ''), 10);
-    return r.ok && Number.isFinite(size) && size > 0 ? size : null;
+    return { hls: false, size: r.ok && Number.isFinite(size) && size > 0 ? size : null };
   })();
-  const timeout = new Promise(resolve => setTimeout(() => resolve(null), SIZE_PROBE_TIMEOUT_MS));
-  return Promise.race([probe.catch(() => null), timeout]);
+  const timeout = new Promise(resolve => setTimeout(() => resolve({ hls: false, size: null }), SIZE_PROBE_TIMEOUT_MS));
+  return Promise.race([probe.catch(() => ({ hls: false, size: null })), timeout]);
 }
 
 function formatSize(bytes) {
@@ -581,7 +586,9 @@ async function rankDownloadable(downloadable) {
   // Per i file diretti chiediamo subito la dimensione alla fonte: Nuvio la mostra come
   // badge (behaviorHints.videoSize) e conferma che il link è davvero scaricabile.
   await Promise.all(entries.filter(e => e.kind === 'direct').map(async e => {
-    e.size = await probeDirectSize(e);
+    const probed = await probeDirectSize(e);
+    if (probed.hls) e.kind = 'hls';
+    else e.size = probed.size;
   }));
 
   // File diretti prima (scaricano a velocità piena, con dimensione e ripresa), poi gli HLS
@@ -627,7 +634,7 @@ app.get('/stream/:type/:id.json', addonCors, asyncRoute(async (req, res) => {
     addons.getStreamsForAllAddons(addonList, type, id),
     pluginsOn
       ? infoPromise.then(info => (info && info.tmdbId
-        ? plugins.getStreams(info.tmdbId, type === 'series' ? 'tv' : 'movie', season ? Number(season) : null, episode ? Number(episode) : null, cfg.addonTimeoutMs)
+        ? plugins.getStreams(info.tmdbId, type === 'series' ? 'tv' : 'movie', season ? Number(season) : null, episode ? Number(episode) : null, cfg.addonTimeoutMs, { animation: info.animation })
         : { streams: [] }))
       : { streams: [] }
   ]);
@@ -657,7 +664,8 @@ app.get('/stream/:type/:id.json', addonCors, asyncRoute(async (req, res) => {
       headers: s.headers,
       streamTitle: s.title,
       title: label,
-      vid: id
+      vid: id,
+      kind: s.kind
     };
     // Nuvio dà al file scaricato l'estensione che trova in questo URL.
     const ext = s.kind === 'direct'

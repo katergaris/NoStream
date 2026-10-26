@@ -1142,7 +1142,8 @@ function downloadPayload(stream, title, mediaType) {
     streamTitle: stream.title,
     title,
     vid: stream.vid,
-    mediaType: mediaType === 'tv' ? 'series' : 'movie'
+    mediaType: mediaType === 'tv' ? 'series' : 'movie',
+    kind: stream.kind
   };
 }
 
@@ -1862,6 +1863,7 @@ function renderNuvioPlugins(view, p, rerender) {
     const group = el('div', { class: 'group' + (p.enabled ? '' : ' dimmed') });
     for (const x of repo.scrapers) {
       const meta = [
+        x.animationOnly ? t('plugins.animationOnly') : null,
         x.version ? `v${x.version}` : null,
         x.langs.length ? x.langs.join('/').toUpperCase() : null,
         x.types.map(tp => (tp === 'tv' ? t('kind.tv') : tp === 'movie' ? t('kind.movie') : tp)).join(', ')
