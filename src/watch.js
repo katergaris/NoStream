@@ -92,6 +92,9 @@ async function verify(s, resolve) {
       // HLS: playlist principale → variante con più banda → primo segmento
       let playlistUrl = first.finalUrl || url;
       let body = first.buf.toString('utf8');
+      // Risoluzione massima dichiarata dalla playlist (serve se il titolo non la dice)
+      const heights = [...body.matchAll(/RESOLUTION=\d+x(\d+)/gi)].map(m => Number(m[1]));
+      const height = heights.length ? Math.max(...heights) : null;
       if (/#EXT-X-STREAM-INF/i.test(body)) {
         const lines = body.split(/\r?\n/);
         let best = null;
@@ -114,7 +117,7 @@ async function verify(s, resolve) {
       if (!segData.buf.length || (!encrypted && !looksLikeVideo(segData.buf) && !/video|mp2t|octet|mp4/i.test(segData.type))) {
         return { ok: false, error: 'segment is not video' };
       }
-      return { ok: true, kind: 'hls', url, headers, ms: Date.now() - start };
+      return { ok: true, kind: 'hls', url, headers, height, ms: Date.now() - start };
     }
     if (!looksLikeVideo(first.buf) && !/^video\//i.test(first.type)) return { ok: false, error: `not video (${first.type || '?'})` };
     return { ok: true, kind: 'direct', url, headers, ms: Date.now() - start };
@@ -149,6 +152,15 @@ async function pick(cacheKey, streams, { lang, resolve }) {
       if (i + TRY_PER_RESOLUTION >= 6) return;  // al massimo 6 tentativi per risoluzione
     }
   }));
+  // Link senza qualità nel titolo: si usa quella vera della playlist HLS. Se quella
+  // risoluzione ha già un link si tiene l'altro, così ne resta uno per risoluzione.
+  const unknown = result.find(r => r.quality === 0);
+  if (unknown && unknown.check.height) {
+    const h = unknown.check.height;
+    const q = h >= 1800 ? 2160 : h >= 900 ? 1080 : h >= 600 ? 720 : 480;
+    result.splice(result.indexOf(unknown), 1);
+    if (!result.some(r => r.quality === q)) result.push({ ...unknown, quality: q });
+  }
   result.sort((a, b) => ORDER.indexOf(a.quality) - ORDER.indexOf(b.quality));
   cache.set(cacheKey, { at: Date.now(), result });
   if (cache.size > 300) cache.delete(cache.keys().next().value);
