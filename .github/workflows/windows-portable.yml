@@ -1,0 +1,131 @@
+name: Versione portable per Windows
+
+# Costruisce lo zip portable (packaging/windows/build-portable.sh), lo prova su una
+# macchina Windows vera e lo pubblica nella pagina Releases:
+# - branch v2   → pre-release «nostream-v2-dev» (sostituita a ogni push)
+# - tag v*      → release della versione
+on:
+  push:
+    branches: [v2]
+    tags: ['v*']
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      zip: ${{ steps.build.outputs.zip }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: false
+      - name: Strumento per l'icona dell'exe
+        run: go install github.com/tc-hib/go-winres@latest
+      - name: Costruzione
+        id: build
+        run: |
+          packaging/windows/build-portable.sh
+          echo "zip=$(basename dist/*.zip)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nostream-windows
+          path: dist/*.zip
+          retention-days: 7
+
+  test:
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: nostream-windows
+      - name: Avvio e controlli
+        shell: pwsh
+        run: |
+          Expand-Archive -Path *.zip -DestinationPath C:\prova
+          $dir = 'C:\prova\NoStream'
+          & "$dir\app\bin\ffmpeg.exe" -hide_banner -version | Select-Object -First 1
+          & "$dir\app\bin\yt-dlp.exe" --version
+          Start-Process -FilePath "$dir\NoStream.exe" -ArgumentList '--no-browser' -WorkingDirectory $dir
+          $ok = $false
+          for ($i = 0; $i -lt 60; $i++) {
+            try { $s = Invoke-RestMethod http://127.0.0.1:4321/api/settings -TimeoutSec 2; $ok = $true; break } catch { Start-Sleep 1 }
+          }
+          if (-not $ok) { Get-Content "$dir\data\logs\nostream.log" -ErrorAction SilentlyContinue; throw 'NoStream non risponde' }
+          "versione: $($s.version)"
+          $y = Invoke-RestMethod http://127.0.0.1:4321/api/ytdlp
+          if (-not $y.version) { throw 'yt-dlp non trovato da NoStream' }
+          "yt-dlp: $($y.version)"
+          $n = Invoke-RestMethod http://127.0.0.1:4321/api/network
+          "rete: $($n.ips -join ', ') portable=$($n.portable)"
+          if (-not $n.portable) { throw 'modalità portable non attiva' }
+          $page = Invoke-WebRequest http://127.0.0.1:4321/ -UseBasicParsing
+          if ($page.StatusCode -ne 200) { throw 'pagina non disponibile' }
+          if (-not (Test-Path "$dir\config.json")) { throw 'config.json non creato nella cartella' }
+          if (-not (Test-Path "$dir\data")) { throw 'cartella data non creata' }
+          Get-Content "$dir\data\logs\nostream.log"
+          Get-Process node, NoStream -ErrorAction SilentlyContinue | Stop-Process -Force
+      - name: Processo chiuso dei plugin (permessi di Node su Windows)
+        shell: pwsh
+        run: |
+          $app = 'C:\prova\NoStream\app'
+          Set-Location $app
+          # 1) Un processo con le stesse restrizioni non deve poter leggere config.json
+          @"
+          const fs = require('fs');
+          let r;
+          try { fs.readFileSync('C:\\prova\\NoStream\\config.json'); r = 'LETTO'; } catch (e) { r = e.code; }
+          let p;
+          try { require('child_process').execSync('whoami'); p = 'AVVIATO'; } catch (e) { p = e.code; }
+          process.send({ r, p });
+          "@ | Out-File -Encoding utf8 src\plugin-runner\perm-test.js
+          @"
+          const { fork } = require('child_process');
+          const path = require('path');
+          const runner = path.join(process.cwd(), 'src', 'plugin-runner');
+          const nm = path.join(process.cwd(), 'node_modules');
+          const opts = { execArgv: ['--experimental-permission', '--allow-fs-read=' + path.join(runner, '*'), '--allow-fs-read=' + path.join(nm, '*'), '--no-warnings'], env: { NODE_PATH: nm }, stdio: ['ignore', 'inherit', 'inherit', 'ipc'] };
+          const t = fork(path.join(runner, 'perm-test.js'), [], opts);
+          t.on('message', m => {
+            console.log('lettura config.json:', m.r, '| avvio processi:', m.p);
+            if (m.r !== 'ERR_ACCESS_DENIED' || m.p !== 'ERR_ACCESS_DENIED') process.exit(1);
+            // 2) Il vero runner esegue un plugin e restituisce i link
+            const c = fork(path.join(runner, 'runner.js'), [], opts);
+            const plugin = "module.exports = { getStreams: async (id) => [{ name: 'prova', title: 'film ' + id, url: 'https://example.com/a.mp4' }] };";
+            c.on('message', x => {
+              if (x.type === 'ready') c.send({ type: 'call', id: 1, key: 'prova', version: '1', code: plugin, args: { tmdbId: '603', mediaType: 'movie' } });
+              if (x.type === 'result') { console.log('runner:', JSON.stringify(x)); c.kill(); process.exit(x.streams && x.streams[0].title === 'film 603' ? 0 : 1); }
+            });
+          });
+          setTimeout(() => { console.log('timeout'); process.exit(1); }, 30000);
+          "@ | Out-File -Encoding utf8 prova-runner.js
+          & "$app\node\node.exe" prova-runner.js
+          if ($LASTEXITCODE -ne 0) { throw 'processo chiuso dei plugin non conforme' }
+
+  publish:
+    needs: [build, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: nostream-windows
+      - name: Pubblicazione nella pagina Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            gh release create "${GITHUB_REF_NAME}" *.zip --title "NoStream ${GITHUB_REF_NAME}" --generate-notes
+          else
+            gh release delete nostream-v2-dev --cleanup-tag -y || true
+            gh release create nostream-v2-dev *.zip --prerelease --target "${GITHUB_SHA}" \
+              --title "NoStream v2 (in sviluppo) — portable Windows" \
+              --notes "Versione di prova costruita dal branch v2 (commit ${GITHUB_SHA::7}). Scarica lo zip, estrailo e avvia NoStream.exe: istruzioni in LEGGIMI.txt."
+          fi

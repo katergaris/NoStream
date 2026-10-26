@@ -101,7 +101,7 @@ async function refresh(repos) {
 function startRunner() {
   if (runner) return ready;
   runner = fork(path.join(RUNNER_DIR, 'runner.js'), [], {
-    execArgv: ['--experimental-permission', `--allow-fs-read=${RUNNER_DIR}/*`, `--allow-fs-read=${NODE_MODULES}/*`, '--no-warnings'],
+    execArgv: ['--experimental-permission', `--allow-fs-read=${path.join(RUNNER_DIR, '*')}`, `--allow-fs-read=${path.join(NODE_MODULES, '*')}`, '--no-warnings'],
     env: { NODE_PATH: NODE_MODULES },
     stdio: ['ignore', 'ignore', 'ignore', 'ipc']
   });

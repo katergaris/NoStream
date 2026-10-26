@@ -340,5 +340,8 @@
     "one": "ultima ricerca: 1 link in {s} s",
     "other": "ultima ricerca: {n} link in {s} s"
   },
-  "plugins.lastError": "ultima ricerca: errore ({error})"
+  "plugins.lastError": "ultima ricerca: errore ({error})",
+  "nuvio.urlsLan": "URL dell'addon (uno per ogni rete del PC: usa quello della rete del telefono)",
+  "nuvio.noLan": "Il PC non risulta collegato a una rete locale: il telefono non può raggiungerlo.",
+  "nuvio.firewall": "La prima volta Windows chiede se consentire a NoStream l'accesso alla rete: scegli «Reti private», altrimenti il telefono non lo raggiunge. Il PC deve restare acceso mentre usi NoStream da Nuvio."
 }
