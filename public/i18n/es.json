@@ -423,5 +423,10 @@
   "srv.watch.description": "Un enlace verificado por resolución, listo para ver, de las fuentes de NoStream",
   "srv.watch.otherQuality": "calidad no indicada",
   "srv.watch.direct": "Archivo directo",
-  "srv.watch.verified": "✓ verificado por NoStream ({s} s)"
+  "srv.watch.verified": "✓ verificado por NoStream ({s} s)",
+  "nuvioAcc.useDisabledAddons": "Usar también los addons desactivados en Nuvio",
+  "nuvioAcc.useDisabledHint": "Así en Nuvio puedes dejar activo solo NoStream: las fuentes las consulta NoStream. No los desinstales, solo desactívalos.",
+  "nuvioAcc.disabledButUsed": "desactivado en Nuvio, usado por NoStream",
+  "plugins.useDisabled": "Usar también los plugins desactivados en Nuvio",
+  "plugins.useDisabledHint": "Vale para los repositorios de plugins desactivados en la app"
 }

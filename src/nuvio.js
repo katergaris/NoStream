@@ -146,7 +146,11 @@ function sync() {
     // Plugin (provider JavaScript): repository nella tabella `plugins`, stessa logica dei profili
     const pluginSource = profile && profile.uses_primary_plugins ? 1 : profileId;
     const pluginRows = await rest(`plugins?select=url,name,enabled,sort_order,profile_id,repo_type&profile_id=eq.${pluginSource}&order=sort_order.asc`).catch(() => []);
-    const pluginReport = await plugins.refresh(pluginRows);
+    // Opzioni: usare anche ciò che in Nuvio è disattivato (così in Nuvio si può lasciare
+    // attivo solo NoStream e far interrogare a NoStream tutte le fonti).
+    const useDisabledAddons = !!s.useDisabledAddons;
+    const useDisabledPlugins = !!s.useDisabledPlugins;
+    const pluginReport = await plugins.refresh(pluginRows, { includeDisabled: useDisabledPlugins });
 
     const seen = new Set();
     const report = await Promise.all(rows.map(async row => {
@@ -154,7 +158,7 @@ function sync() {
       const entry = { id: idFor(url), url, name: row.name || null, enabled: row.enabled !== false, sortOrder: row.sort_order };
       if (seen.has(url)) return { ...entry, status: 'duplicate' };
       seen.add(url);
-      if (!entry.enabled) return { ...entry, status: 'disabled' };
+      if (!entry.enabled && !useDisabledAddons) return { ...entry, status: 'disabled' };
       const p = await probe(url);
       if (!p.ok) return { ...entry, status: 'unreachable', error: p.error, ms: p.ms };
       const a = analyseManifest(p.manifest);
@@ -205,6 +209,8 @@ function status(lang = 'it') {
     profiles: s.profiles || [],
     lastSync: s.lastSync || null,
     error: errorText(s, lang),
+    useDisabledAddons: !!s.useDisabledAddons,
+    useDisabledPlugins: !!s.useDisabledPlugins,
     // Gli URL possono contenere chiavi personali: all'interfaccia va solo il dominio.
     addons: (s.report || []).map(r => ({
       id: r.id,
@@ -242,6 +248,14 @@ function pluginStatus(s) {
       })
     }))
   };
+}
+
+function setOptions({ useDisabledAddons, useDisabledPlugins }) {
+  const patch = {};
+  if (typeof useDisabledAddons === 'boolean') patch.useDisabledAddons = useDisabledAddons;
+  if (typeof useDisabledPlugins === 'boolean') patch.useDisabledPlugins = useDisabledPlugins;
+  saveState(patch);
+  return sync();
 }
 
 function setPluginsEnabled(enabled) {
@@ -298,4 +312,4 @@ function init() {
   setInterval(run, SYNC_EVERY_MS).unref();
 }
 
-module.exports = { init, login, sync, status, setProfile, setUsed, setPluginsEnabled, setPluginUsed, logout };
+module.exports = { init, login, sync, status, setProfile, setUsed, setOptions, setPluginsEnabled, setPluginUsed, logout };
