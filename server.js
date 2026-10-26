@@ -396,6 +396,7 @@ app.post('/api/nuvio/profile', nuvioRoute(req => nuvio.setProfile((req.body || {
 app.post('/api/nuvio/addons/:id', nuvioRoute(req => nuvio.setUsed(req.params.id, !!(req.body || {}).used)));
 app.post('/api/nuvio/plugins', nuvioRoute(req => nuvio.setPluginsEnabled(!!(req.body || {}).enabled)));
 app.post('/api/nuvio/plugins/:key', nuvioRoute(req => nuvio.setPluginUsed(req.params.key, !!(req.body || {}).used)));
+app.post('/api/nuvio/options', nuvioRoute(req => nuvio.setOptions(req.body || {})));
 app.post('/api/nuvio/logout', nuvioRoute(() => nuvio.logout()));
 
 // ---- Video da link (yt-dlp) ----

@@ -42,7 +42,7 @@ async function fetchText(url, ms = 15000) {
 
 // Legge i manifest dei repository e scarica il codice dei plugin. repos = righe della
 // tabella `plugins` dell'account Nuvio (url, name, enabled, sort_order).
-async function refresh(repos) {
+async function refresh(repos, { includeDisabled = false } = {}) {
   const report = [];
   for (const repo of repos) {
     const url = String(repo.url || '').trim();
@@ -56,7 +56,7 @@ async function refresh(repos) {
       error: null
     };
     report.push(entry);
-    if (!entry.enabled || !url) continue;
+    if ((!entry.enabled && !includeDisabled) || !url) continue;
     let manifest;
     try {
       manifest = JSON.parse(await fetchText(url));

@@ -423,5 +423,10 @@
   "srv.watch.description": "One verified link per resolution, ready to watch, from NoStream's sources",
   "srv.watch.otherQuality": "quality not stated",
   "srv.watch.direct": "Direct file",
-  "srv.watch.verified": "✓ verified by NoStream ({s} s)"
+  "srv.watch.verified": "✓ verified by NoStream ({s} s)",
+  "nuvioAcc.useDisabledAddons": "Also use addons disabled in Nuvio",
+  "nuvioAcc.useDisabledHint": "This way you can keep only NoStream enabled in Nuvio: NoStream queries the sources. Don't uninstall them, just disable them.",
+  "nuvioAcc.disabledButUsed": "disabled in Nuvio, used by NoStream",
+  "plugins.useDisabled": "Also use plugins disabled in Nuvio",
+  "plugins.useDisabledHint": "Applies to plugin repositories disabled in the app"
 }

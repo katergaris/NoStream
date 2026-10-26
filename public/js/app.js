@@ -1807,13 +1807,17 @@ function renderNuvioAccountPage(view) {
 
   const used = n.addons.filter(a => a.used).length;
   view.appendChild(el('div', { class: 'sec' }, t('nuvioAcc.addonsTitle', { n: n.addons.length, used })));
+  view.appendChild(el('div', { class: 'group', style: 'margin-bottom:10px' }, switchRow(t('nuvioAcc.useDisabledAddons'), n.useDisabledAddons, async v => {
+    try { rerender(await api('/nuvio/options', { method: 'POST', body: JSON.stringify({ useDisabledAddons: v }) })); toast(t('nuvioAcc.synced')); }
+    catch (err) { toast(err.message, true); }
+  }, t('nuvioAcc.useDisabledHint'))));
   if (!n.addons.length) {
     view.appendChild(el('div', { class: 'empty' }, t('nuvioAcc.noAddons')));
   } else {
     const group = el('div', { class: 'group' });
     for (const a of n.addons.slice().sort((x, y) => (x.sortOrder ?? 0) - (y.sortOrder ?? 0))) {
       const [cls, key] = NUVIO_STATUS[a.status] || ['', a.status];
-      const detail = [a.host, a.ms && a.status !== 'unreachable' ? t('addons.responds', { s: new Intl.NumberFormat(I18N.lang, { maximumFractionDigits: 1 }).format(a.ms / 1000) }) : null].filter(Boolean).join(' · ');
+      const detail = [a.host, !a.enabled && a.status !== 'disabled' ? t('nuvioAcc.disabledButUsed') : null, a.ms && a.status !== 'unreachable' ? t('addons.responds', { s: new Intl.NumberFormat(I18N.lang, { maximumFractionDigits: 1 }).format(a.ms / 1000) }) : null].filter(Boolean).join(' · ');
       const right = a.status === 'usable'
         ? (() => {
           const input = el('input', { type: 'checkbox', role: 'switch', 'aria-label': t('nuvioAcc.use', { name: a.name }), onchange: async e => {
@@ -1854,11 +1858,15 @@ function renderNuvioPlugins(view, p, rerender) {
     try { rerender(await api('/nuvio/plugins', { method: 'POST', body: JSON.stringify({ enabled: v }) })); }
     catch (err) { toast(err.message, true); }
   }, t('plugins.useAllHint'))));
+  view.appendChild(el('div', { class: 'group', style: 'margin-top:10px' }, switchRow(t('plugins.useDisabled'), !!state.nuvio.useDisabledPlugins, async v => {
+    try { rerender(await api('/nuvio/options', { method: 'POST', body: JSON.stringify({ useDisabledPlugins: v }) })); toast(t('nuvioAcc.synced')); }
+    catch (err) { toast(err.message, true); }
+  }, t('plugins.useDisabledHint'))));
   view.appendChild(el('div', { class: 'note' }, [icon('info'), el('span', {}, t('plugins.security'))]));
 
   for (const repo of p.repos) {
     view.appendChild(el('div', { class: 'sec' }, [repo.name || repo.host,
-      el('span', {}, repo.error ? t('plugins.repoError', { error: repo.error }) : !repo.enabled ? t('nuvioAcc.st.disabled') : repo.host)]));
+      el('span', {}, repo.error ? t('plugins.repoError', { error: repo.error }) : !repo.enabled ? (state.nuvio.useDisabledPlugins ? t('nuvioAcc.disabledButUsed') : t('nuvioAcc.st.disabled')) : repo.host)]));
     if (!repo.scrapers.length) continue;
     const group = el('div', { class: 'group' + (p.enabled ? '' : ' dimmed') });
     for (const x of repo.scrapers) {
