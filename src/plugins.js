@@ -13,6 +13,7 @@ const path = require('path');
 const { fork } = require('child_process');
 
 const config = require('./config');
+const { AppError } = require('./i18n');
 
 const RUNNER_DIR = path.join(__dirname, 'plugin-runner');
 const NODE_MODULES = path.join(__dirname, '..', 'node_modules');
@@ -121,7 +122,7 @@ function startRunner() {
   runner.on('exit', () => {
     runner = null;
     ready = null;
-    for (const [id, p] of pending) { clearTimeout(p.timer); p.reject(new Error('processo dei plugin terminato')); pending.delete(id); }
+    for (const [id, p] of pending) { clearTimeout(p.timer); p.reject(new AppError('srv.pluginRunnerExit')); pending.delete(id); }
   });
   return ready;
 }
@@ -133,7 +134,7 @@ function restartRunner() {
 
 async function callPlugin(key, args) {
   const c = code.get(key);
-  if (!c) throw new Error('codice non disponibile');
+  if (!c) throw new AppError('srv.pluginNoCode');
   await startRunner();
   const id = nextId++;
   return new Promise((resolve, reject) => {

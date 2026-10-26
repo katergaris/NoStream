@@ -69,7 +69,7 @@ window.addEventListener('unhandledrejection', e => {
 });
 
 async function api(path, options = {}) {
-  const res = await fetch('/api' + path, { headers: { 'Content-Type': 'application/json' }, ...options });
+  const res = await fetch('/api' + path, { headers: { 'Content-Type': 'application/json', 'X-NoStream-Lang': I18N.lang }, ...options });
   let data = null;
   try { data = await res.json(); } catch {}
   if (!res.ok) throw new Error((data && data.error) || t('error.http', { status: res.status }));
@@ -1471,7 +1471,7 @@ function renderDownloads() {
           el('span', { class: isErr ? 'err' : '' }, [itemStatusText(item), item.dest === 'server' && item.type !== 'link' ? ` · ${t('dest.serverShort')}` : ''].join(''))
         ]),
         isErr
-          ? el('button', { class: 'btn sm', type: 'button', onclick: () => retryItem(item) }, t('common.retry'))
+          ? el('button', { class: 'icon-btn', type: 'button', title: t('common.retry'), 'aria-label': t('common.retry'), onclick: () => retryItem(item) }, icon('retry'))
           : i > 0 && item.status === 'pending'
             ? el('button', { class: 'icon-btn', type: 'button', 'aria-label': t('downloads.moveUp'), onclick: () => moveUp(item) }, icon('up'))
             : null,
@@ -1540,7 +1540,7 @@ function serverFileRow(f) {
         ? el('div', { class: 'bar' + (f.size ? '' : ' indeterminate') }, el('i', { style: `width:${pct}%` })) : null
     ]),
     f.status === 'done'
-      ? el('a', { class: 'btn sm', href: f.path, download: '' }, [icon('download'), t('common.download')])
+      ? el('a', { class: 'icon-btn', href: f.path, download: '', title: t('common.download'), 'aria-label': t('common.download') }, icon('download'))
       : null,
     el('button', { class: 'icon-btn', type: 'button', 'aria-label': t('server.delete'), onclick: () => deleteServerFile(f) }, icon('trash'))
   ]);
@@ -1763,7 +1763,7 @@ function renderNuvioAccountPage(view) {
   if (!n.connected) {
     view.appendChild(el('p', { class: 'lead' }, t('nuvioAcc.lead')));
     if (n.error) view.appendChild(el('div', { class: 'note err' }, [icon('alert'), el('span', {}, n.error)]));
-    const email = el('input', { class: 'input', type: 'email', autocomplete: 'username', placeholder: 'nome@esempio.it', 'aria-label': t('nuvioAcc.email') });
+    const email = el('input', { class: 'input', type: 'email', autocomplete: 'username', placeholder: 'name@example.com', 'aria-label': t('nuvioAcc.email') });
     if (n.email) email.value = n.email;
     const pass = el('input', { class: 'input', type: 'password', autocomplete: 'current-password', 'aria-label': t('nuvioAcc.password') });
     const btn = el('button', { class: 'btn primary block', type: 'submit', style: 'margin-top:16px' }, t('nuvioAcc.connect'));

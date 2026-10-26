@@ -10,6 +10,7 @@ const prepared = require('./src/prepared');
 const ytdlp = require('./src/ytdlp');
 const nuvio = require('./src/nuvio');
 const plugins = require('./src/plugins');
+const i18n = require('./src/i18n');
 
 const cfg = config.get();
 
@@ -49,6 +50,7 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json());
+app.use(i18n.middleware);
 
 function asyncRoute(fn) {
   return (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -59,7 +61,7 @@ function asyncRoute(fn) {
 app.get('/api/search', asyncRoute(async (req, res) => {
   const { query } = req.query;
   if (!query || !String(query).trim()) {
-    return res.status(400).json({ error: 'Parametro query mancante' });
+    return res.status(400).json({ error: req.t('srv.missingQuery') });
   }
   const results = await addons.searchMulti(String(query).trim(), cfg.tmdbApiKey, cfg.language);
   res.json({ results });
@@ -80,23 +82,23 @@ app.get('/api/episodes/:tmdbId/:season', asyncRoute(async (req, res) => {
 app.get('/api/streams', asyncRoute(async (req, res) => {
   const { tmdbId, type, season, episode } = req.query;
   if (!tmdbId || !type) {
-    return res.status(400).json({ error: 'Parametri tmdbId e type richiesti' });
+    return res.status(400).json({ error: req.t('srv.missingParams') });
   }
   if (type === 'tv' && (!season || !episode)) {
-    return res.status(400).json({ error: 'Parametri season ed episode richiesti per le serie' });
+    return res.status(400).json({ error: req.t('srv.missingEpisode') });
   }
 
   const stremioType = type === 'tv' ? 'series' : 'movie';
   const imdbId = await addons.getImdbId(tmdbId, type, cfg.tmdbApiKey);
   if (!imdbId) {
-    return res.status(404).json({ error: 'IMDb ID non trovato per questo titolo' });
+    return res.status(404).json({ error: req.t('srv.noImdb') });
   }
 
   const stremioId = addons.buildStremioId(imdbId, stremioType, season, episode);
   const addonList = config.listAddons();
   const pluginsOn = !!plugins.settings().enabled;
   if (addonList.length === 0 && !pluginsOn) {
-    return res.status(400).json({ error: 'Nessun addon configurato: aggiungine uno in Impostazioni → Addon' });
+    return res.status(400).json({ error: req.t('srv.noAddons') });
   }
 
   const [fromAddons, fromPlugins] = await Promise.all([
@@ -113,7 +115,7 @@ app.get('/api/streams', asyncRoute(async (req, res) => {
   const ranked = await rankDownloadable(streams.filter(s => s.supported));
   for (const s of ranked) {
     const job = prepared.get(prepared.keyFor({ vid: stremioId, addonName: s.addonName, streamTitle: s.title }));
-    if (job) s.prepared = prepared.publicView(job);
+    if (job) s.prepared = prepared.publicView(job, req.lang);
   }
   const unsupported = streams.filter(s => !s.supported);
   res.json({ imdbId, stremioId, streams: [...ranked, ...unsupported], errors });
@@ -164,7 +166,7 @@ app.post('/api/addons', asyncRoute(async (req, res) => {
   const { manifestUrl } = req.body || {};
   let { name } = req.body || {};
   if (!manifestUrl || !/^https?:\/\//i.test(String(manifestUrl).trim())) {
-    return res.status(400).json({ error: 'URL del manifest mancante o non valido' });
+    return res.status(400).json({ error: req.t('srv.badManifestUrl') });
   }
   // Il nome si può omettere: lo prendiamo dal manifest.
   if (!name) {
@@ -172,7 +174,7 @@ app.post('/api/addons', asyncRoute(async (req, res) => {
       const { manifest } = await fetchManifest(String(manifestUrl).trim());
       name = manifest.name || new URL(manifestUrl).hostname;
     } catch (e) {
-      return res.status(400).json({ error: `Manifest non raggiungibile (${e.name === 'TimeoutError' ? 'timeout' : e.message})` });
+      return res.status(400).json({ error: req.t('srv.manifestUnreachable', { msg: e.name === 'TimeoutError' ? 'timeout' : e.message }) });
     }
   }
   const addon = config.addAddon({ name, manifestUrl });
@@ -181,7 +183,7 @@ app.post('/api/addons', asyncRoute(async (req, res) => {
 
 app.get('/api/addons/:id/check', asyncRoute(async (req, res) => {
   const addon = config.listAddons().find(a => a.id === req.params.id);
-  if (!addon) return res.status(404).json({ error: 'Addon non trovato' });
+  if (!addon) return res.status(404).json({ error: req.t('srv.addonNotFound') });
   try {
     const { ms } = await fetchManifest(addon.manifestUrl);
     res.json({ ok: true, ms });
@@ -199,7 +201,7 @@ app.delete('/api/addons/:id', (req, res) => {
     return res.status(204).end();
   }
   const removed = config.removeAddon(req.params.id);
-  if (!removed) return res.status(404).json({ error: 'Addon non trovato' });
+  if (!removed) return res.status(404).json({ error: req.t('srv.addonNotFound') });
   res.status(204).end();
 });
 
@@ -226,7 +228,7 @@ async function handleDownload(rawData, req, res) {
   try {
     params = decodeDownloadPayload(rawData);
   } catch {
-    return res.status(400).json({ error: 'Parametro data non valido' });
+    return res.status(400).json({ error: req.t('srv.badData') });
   }
 
   // Ripresa di un download HLS (Nuvio riapre la connessione a ogni cambio di rete): ci si
@@ -254,7 +256,7 @@ async function handleDownload(rawData, req, res) {
     try {
       resolved = await extractor.resolveExternalUrl(params.externalUrl);
     } catch (e) {
-      return res.status(e.status || 502).json({ error: e.message });
+      return res.status(e.status || 502).json({ error: i18n.msgOf(e, req.lang) });
     }
     params.sourceUrl = resolved.sourceUrl;
     params.headers = { ...baseHeaders, ...(resolved.headers || {}) };
@@ -268,7 +270,7 @@ async function handleDownload(rawData, req, res) {
   try {
     preparedDl = streamer.prepareDownload(params);
   } catch (e) {
-    return res.status(e.status || 400).json({ error: e.message });
+    return res.status(e.status || 400).json({ error: i18n.msgOf(e, req.lang) });
   }
 
   // File diretto: NoStream lo scarica sul proprio disco a piena velocità e intanto lo passa
@@ -335,7 +337,7 @@ app.get('/api/download', asyncRoute(async (req, res) => {
 
 // File sul server: preparati dagli addon e scaricati da link con yt-dlp, in un'unica lista.
 app.get('/api/prepared', (req, res) => {
-  const items = [...prepared.list(), ...ytdlp.list()].sort((a, b) => b.createdAt - a.createdAt);
+  const items = [...prepared.list(req.lang), ...ytdlp.list(req.lang)].sort((a, b) => b.createdAt - a.createdAt);
   res.json({ items });
 });
 
@@ -344,24 +346,24 @@ app.post('/api/prepared', (req, res) => {
   try {
     params = decodeDownloadPayload(req.body && req.body.data);
   } catch {
-    return res.status(400).json({ error: 'Parametro data non valido' });
+    return res.status(400).json({ error: req.t('srv.badData') });
   }
-  if (!params.sourceUrl && !params.externalUrl) return res.status(400).json({ error: 'Stream senza URL' });
+  if (!params.sourceUrl && !params.externalUrl) return res.status(400).json({ error: req.t('srv.noUrl') });
   const job = prepared.ensure(params, { title: params.title, filename: preparedFilename(params) });
-  res.status(201).json({ item: prepared.publicView(job) });
+  res.status(201).json({ item: prepared.publicView(job, req.lang) });
 });
 
 app.delete('/api/prepared/:key', (req, res) => {
-  if (!prepared.remove(req.params.key) && !ytdlp.remove(req.params.key)) return res.status(404).json({ error: 'Non trovato' });
+  if (!prepared.remove(req.params.key) && !ytdlp.remove(req.params.key)) return res.status(404).json({ error: req.t('srv.notFound') });
   res.status(204).end();
 });
 
 app.get('/api/prepared/:key/:filename', asyncRoute(async (req, res) => {
   logDownloadConnection(req, res);
   const job = prepared.get(req.params.key);
-  if (!job) return res.status(404).json({ error: 'File non più presente sul server' });
+  if (!job) return res.status(404).json({ error: req.t('srv.fileGone') });
   if (!(await prepared.serve(job, req, res)) && !res.headersSent) {
-    res.status(502).json({ error: job.error || 'Preparazione non riuscita' });
+    res.status(502).json({ error: i18n.errorText(job, req.lang) || req.t('srv.prepFailed') });
   }
 }));
 
@@ -370,18 +372,19 @@ app.get('/api/prepared/:key/:filename', asyncRoute(async (req, res) => {
 function nuvioRoute(fn) {
   return asyncRoute(async (req, res) => {
     try {
-      res.json(await fn(req));
+      await fn(req);
+      res.json(nuvio.status(req.lang));
     } catch (e) {
-      res.status(e.auth ? 401 : 502).json({ error: e.message });
+      res.status(e.auth ? 401 : 502).json({ error: i18n.msgOf(e, req.lang) });
     }
   });
 }
 
-app.get('/api/nuvio', (req, res) => res.json(nuvio.status()));
+app.get('/api/nuvio', (req, res) => res.json(nuvio.status(req.lang)));
 app.post('/api/nuvio/login', nuvioRoute(req => {
   const { email, password } = req.body || {};
   if (!email || !password) {
-    const e = new Error('Email e password richieste');
+    const e = new i18n.AppError('srv.nuvioNeedLogin');
     e.auth = true;
     throw e;
   }
@@ -398,8 +401,7 @@ app.post('/api/nuvio/logout', nuvioRoute(() => nuvio.logout()));
 
 function checkLinkUrl(url) {
   if (!url || !/^https?:\/\//i.test(String(url).trim())) {
-    const e = new Error('Link mancante o non valido');
-    e.status = 400;
+    const e = new i18n.AppError('srv.badLink', {}, 400);
     throw e;
   }
   return String(url).trim();
@@ -410,20 +412,20 @@ app.post('/api/link/info', asyncRoute(async (req, res) => {
   try {
     res.json(await ytdlp.info(url));
   } catch (e) {
-    res.status(422).json({ error: e.message });
+    res.status(422).json({ error: i18n.msgOf(e, req.lang) });
   }
 }));
 
 app.post('/api/link/jobs', (req, res) => {
   const { url, mode, title, index } = req.body || {};
   const job = ytdlp.ensure({ url: checkLinkUrl(url), mode, title, index: parseInt(index, 10) || null });
-  res.status(201).json({ item: ytdlp.publicView(job) });
+  res.status(201).json({ item: ytdlp.publicView(job, req.lang) });
 });
 
 app.get('/api/link/:key/:filename', (req, res) => {
   logDownloadConnection(req, res);
   const job = ytdlp.get(req.params.key);
-  if (!job) return res.status(404).json({ error: 'File non più presente sul server' });
+  if (!job) return res.status(404).json({ error: req.t('srv.fileGone') });
   ytdlp.serve(job, req, res);
 });
 
@@ -444,7 +446,7 @@ app.post('/api/ytdlp/update', asyncRoute(async (req, res) => {
   try {
     res.json(await ytdlp.update());
   } catch (e) {
-    res.status(502).json({ error: `Aggiornamento non riuscito: ${e.message}` });
+    res.status(502).json({ error: req.t('srv.updateFailed', { msg: i18n.msgOf(e, req.lang) }) });
   }
 }));
 
@@ -459,36 +461,37 @@ app.get('/prepare/:data', (req, res) => {
   try {
     params = decodeDownloadPayload(req.params.data);
   } catch {
-    return res.status(400).send('Link non valido');
+    return res.status(400).send(req.t('srv.badLink'));
   }
   const job = prepared.ensure(params, { title: params.title, filename: preparedFilename(params) });
   const pct = job.size ? Math.floor((job.written / job.size) * 100) : 0;
   const state = {
-    queued: 'In coda sul server…',
-    running: job.size ? `Download sul server: ${pct}% (${formatSize(job.written)} di ${formatSize(job.size)})` : 'Collegamento alla fonte…',
-    done: `Pronto sul server · ${formatSize(job.size)}`,
-    failed: `Non riuscito: ${job.error || 'errore sconosciuto'}`
+    queued: req.t('srv.prep.queued'),
+    running: job.size ? req.t('srv.prep.running', { pct, sent: formatSize(job.written), total: formatSize(job.size) }) : req.t('srv.prep.connecting'),
+    done: req.t('srv.prep.done', { size: formatSize(job.size) }),
+    failed: req.t('srv.prep.failed', { msg: i18n.errorText(job, req.lang) || '?' })
   }[job.status];
   const finished = job.status === 'done' || job.status === 'failed';
-  res.type('html').send(`<!DOCTYPE html><html lang="it"><head><meta charset="utf-8">
+  res.type('html').send(`<!DOCTYPE html><html lang="${req.lang}"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 ${finished ? '' : '<meta http-equiv="refresh" content="4">'}
-<title>NoStream · Prepara sul server</title>
+<title>NoStream · ${escapeHtml(req.t('srv.prep.title'))}</title>
 <link rel="icon" href="/logo.svg" type="image/svg+xml">
 <style>
-body{margin:0;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#FDF6E9;color:#111;padding:28px 18px}
-.box{max-width:520px;margin:0 auto;background:#fff;border:3px solid #111;border-radius:8px;box-shadow:6px 6px 0 #111;padding:22px}
-h1{font-size:1.1rem;margin:0 0 6px;text-transform:uppercase}p{line-height:1.5;margin:10px 0}
-.bar{height:16px;border:2px solid #111;border-radius:99px;overflow:hidden;background:#FDF6E9}.bar div{height:100%;background:#3A86FF}
-.ok{color:#118844;font-weight:800}.ko{color:#c22;font-weight:800}
-@media (prefers-color-scheme:dark){body{background:#171512;color:#F5F1E8}.box{background:#221f1a;border-color:#F5F1E8;box-shadow:6px 6px 0 #000}.bar{border-color:#F5F1E8;background:#171512}}
+:root{--bg:#f6f6f4;--surface:#fff;--line:#e2e2dc;--text:#17181c;--muted:#676b74;--accent:#f5c542;--ok:#138a56;--err:#d23535}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1015;--surface:#181a22;--line:#2a2d3a;--text:#eceef3;--muted:#959bab;--ok:#3ecf8e;--err:#ff6b6b}}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--text);padding:28px 16px}
+.box{max-width:520px;margin:0 auto;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:22px}
+h1{font-size:1.15rem;margin:12px 0 4px}p{line-height:1.5;margin:10px 0}.muted{color:var(--muted);font-size:.95rem}
+.bar{height:8px;border-radius:99px;overflow:hidden;background:var(--line)}.bar div{height:100%;background:var(--accent)}
+.ok{color:var(--ok);font-weight:650}.ko{color:var(--err);font-weight:650}
 </style></head><body><div class="box">
-<img src="/logo.svg" alt="" width="48" height="48">
-<h1>📦 Prepara sul server</h1>
+<img src="/logo.svg" alt="" width="40" height="40">
+<h1>${escapeHtml(req.t('srv.prep.title'))}</h1>
 <p><strong>${escapeHtml(job.title || job.filename)}</strong></p>
 <div class="bar"><div style="width:${job.status === 'done' ? 100 : pct}%"></div></div>
 <p class="${job.status === 'done' ? 'ok' : job.status === 'failed' ? 'ko' : ''}">${escapeHtml(state)}</p>
-<p>Puoi chiudere questa pagina: il download continua sul server. Torna su Nuvio e riapri la lista degli stream: quando è pronto trovi la voce <strong>✅ Pronto sul server</strong>, che si scarica in pochi secondi.</p>
+<p class="muted">${escapeHtml(req.t('srv.prep.hint'))}</p>
 </div></body></html>`);
 });
 
@@ -610,7 +613,7 @@ app.get('/manifest.json', addonCors, (req, res) => {
     version: '1.0.0',
     name: 'NoStream',
     logo: `${publicProtocol(req)}://${req.get('host')}/logo-256.png`,
-    description: 'Scarica sul dispositivo i contenuti trovati dagli addon configurati in NoStream',
+    description: req.t('srv.addon.description'),
     resources: ['stream'],
     types: ['movie', 'series'],
     idPrefixes: ['tt'],
@@ -675,8 +678,8 @@ app.get('/stream/:type/:id.json', addonCors, asyncRoute(async (req, res) => {
     const downloadUrl = `${base}/api/download/${encodeDownloadPayload(payload)}/${cosmeticFilename}`;
     const provider = s.externalUrl ? extractor.providerFromUrl(s.externalUrl) : null;
     const details = s.kind === 'direct'
-      ? `File diretto${s.size ? ` · ${formatSize(s.size)}` : ''} · scaricato sul server e passato al telefono man mano, riprendibile`
-      : 'HLS · convertito al volo sul server: dimensione nota solo a conversione finita, riprendibile';
+      ? req.t('srv.addon.directDetails', { size: s.size ? ` · ${formatSize(s.size)}` : '' })
+      : req.t('srv.addon.hlsDetails');
     const hints = { filename: `${label}${ext}` };
     if (s.size) hints.videoSize = s.size;
     const origin = `${s.addonNames.join(', ')}${provider ? ` · ${provider}` : ''}`;
@@ -691,11 +694,11 @@ app.get('/stream/:type/:id.json', addonCors, asyncRoute(async (req, res) => {
       const readyHints = { filename: `${label}${ext}` };
       if (job.size) readyHints.videoSize = job.size;
       return [{
-        name: ready ? '✅ Pronto sul server' : `⏳ Sul server ${pct}%`,
+        name: ready ? req.t('srv.addon.ready') : req.t('srv.addon.onServer', { pct }),
         title: [
           ready
-            ? `Già scaricato sul server${job.size ? ` · ${formatSize(job.size)}` : ''} · arriva in pochi secondi dalla rete di casa`
-            : 'In preparazione sul server: puoi già scaricarlo, il resto arriva man mano',
+            ? req.t('srv.addon.readyDetails', { size: job.size ? ` · ${formatSize(job.size)}` : '' })
+            : req.t('srv.addon.preparingDetails'),
           s.title,
           origin
         ].join('\n'),
@@ -705,16 +708,16 @@ app.get('/stream/:type/:id.json', addonCors, asyncRoute(async (req, res) => {
     }
 
     const items = [{
-      name: s.kind === 'direct' ? '⬇️ Scaricabile' : '🔄 Da convertire',
+      name: s.kind === 'direct' ? req.t('srv.addon.direct') : req.t('srv.addon.hls'),
       title: [details, s.title, origin].join('\n'),
       url: downloadUrl,
       behaviorHints: hints
     }];
     if (s.kind === 'direct') {
       items.push({
-        name: '📦 Prepara sul server',
+        name: req.t('srv.addon.prepare'),
         title: [
-          'Scarica il file sul server senza usare il telefono; quando è pronto lo trovi qui come "✅ Pronto sul server"',
+          req.t('srv.addon.prepareDetails'),
           s.title,
           origin
         ].join('\n'),
@@ -736,7 +739,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use((err, req, res, next) => {
   console.error(err);
   if (res.headersSent) return res.end();
-  res.status(err.status || 500).json({ error: err.message || 'Errore interno' });
+  res.status(err.status || 500).json({ error: i18n.msgOf(err, req.lang || 'it') });
 });
 
 const httpServer = app.listen(cfg.port, () => {

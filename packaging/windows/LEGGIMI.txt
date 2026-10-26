@@ -11,6 +11,8 @@ PRIMA VOLTA
   - Windows può chiedere se consentire l'accesso alla rete: scegli «Reti private».
     Serve se vuoi usare NoStream anche dal telefono (Nuvio o browser).
   - NoStream ti guida: API key TMDB, addon (o il tuo account Nuvio).
+  - L'interfaccia segue la lingua del browser (italiano, inglese, spagnolo,
+    francese, tedesco); puoi cambiarla nelle Impostazioni.
 
 DOVE STA TUTTO
   config.json   impostazioni, key TMDB, accesso all'account Nuvio. NON condividerlo.

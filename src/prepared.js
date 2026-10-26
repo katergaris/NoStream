@@ -16,6 +16,7 @@ const fsp = require('fs/promises');
 const path = require('path');
 
 const streamer = require('./streamer');
+const { AppError, saveError, errorText } = require('./i18n');
 
 const DIR = path.join(process.env.DATA_DIR || path.join(__dirname, '..', 'data'), 'prepared');
 // Preparazioni in background (pulsante "Prepara sul server") contemporanee. Quelle con un
@@ -46,7 +47,7 @@ function keyFor(p) {
 function dataPath(key) { return path.join(DIR, `${key}.data`); }
 function metaPath(key) { return path.join(DIR, `${key}.json`); }
 
-function publicView(job) {
+function publicView(job, lang = 'it') {
   return {
     key: job.key,
     title: job.title,
@@ -54,7 +55,7 @@ function publicView(job) {
     size: job.size,
     written: job.written,
     status: job.status,
-    error: job.error,
+    error: errorText(job, lang),
     createdAt: job.createdAt,
     lastAccess: job.lastAccess,
     path: `/api/prepared/${job.key}/${encodeURIComponent(job.filename)}`
@@ -90,8 +91,8 @@ function init() {
 
 function get(key) { return jobs.get(key) || null; }
 
-function list() {
-  return [...jobs.values()].sort((a, b) => b.createdAt - a.createdAt).map(publicView);
+function list(lang) {
+  return [...jobs.values()].sort((a, b) => b.createdAt - a.createdAt).map(j => publicView(j, lang));
 }
 
 // Crea (o riprende) la preparazione di uno stream. onDemand = c'è un client che aspetta.
@@ -149,13 +150,13 @@ function schedule() {
 function startJob(job) {
   if (job.status === 'running') return;
   job.status = 'running';
-  job.error = null;
+  Object.assign(job, saveError(null));
   save(job);
   runJob(job)
     .catch(e => {
       if (job.cancelled) return;
       job.status = 'failed';
-      job.error = e.message;
+      Object.assign(job, saveError(e));
       console.error(`Preparazione fallita: ${job.filename} — ${e.message}`);
     })
     .finally(() => {
@@ -177,7 +178,7 @@ function freeBytes() {
 async function runJob(job) {
   let src = await resolveSource(job.params, { fresh: false });
   if (streamer.detectType(src.url) === 'hls') {
-    throw new Error('Stream HLS: la conversione avviene già sul server, usa "Scarica"');
+    throw new AppError('srv.prepHls');
   }
 
   const file = dataPath(job.key);
@@ -195,13 +196,13 @@ async function runJob(job) {
           streamer.discard(up);
           up = null;
           src = await resolveSource(job.params, { fresh: true });
-          throw new Error(`fonte scaduta, link risolto di nuovo`);
+          throw new AppError('srv.srcExpired');
         }
-        if (!up.res.ok) throw new Error(`la fonte ha risposto ${up.res.status}`);
+        if (!up.res.ok) throw new AppError('srv.srcStatus', { status: up.res.status });
 
         const range = up.res.status === 206 ? streamer.parseContentRange(up.res.headers.get('content-range')) : null;
         if (range) {
-          if (range.start !== job.written) throw new Error('la fonte ha restituito un tratto diverso da quello chiesto');
+          if (range.start !== job.written) throw new AppError('srv.srcRange');
           if (range.total) job.size = range.total;
         } else {
           // La fonte ignora Range: si riparte da zero sovrascrivendo.
@@ -209,12 +210,12 @@ async function runJob(job) {
           const len = parseInt(up.res.headers.get('content-length'), 10);
           if (Number.isFinite(len)) job.size = len;
         }
-        if (!job.size) throw Object.assign(new Error('la fonte non dichiara la dimensione del file'), { fatal: true });
+        if (!job.size) throw Object.assign(new AppError('srv.srcNoSize'), { fatal: true });
         job.contentType = job.contentType || up.res.headers.get('content-type') || 'video/mp4';
         if (!spaceChecked) {
           spaceChecked = true;
           if (freeBytes() < job.size - job.written + FREE_MARGIN_BYTES) {
-            throw Object.assign(new Error('spazio su disco insufficiente sul server'), { fatal: true });
+            throw Object.assign(new AppError('srv.noSpace'), { fatal: true });
           }
         }
 
@@ -226,7 +227,7 @@ async function runJob(job) {
             const stall = new Promise(resolve => { timer = setTimeout(() => resolve({ stall: true }), streamer.UPSTREAM_STALL_MS); });
             const r = await Promise.race([reader.read(), stall]);
             clearTimeout(timer);
-            if (r.stall) throw new Error('fonte bloccata');
+            if (r.stall) throw new AppError('srv.srcStalled');
             if (r.done) break;
             await fh.write(r.value, 0, r.value.length, job.written);
             job.written += r.value.length;
@@ -241,7 +242,7 @@ async function runJob(job) {
           reader.cancel().catch(() => {});
         }
         if (!job.cancelled && job.written < job.size && job.written === startedAt) {
-          throw new Error('la fonte ha chiuso senza mandare dati');
+          throw new AppError('srv.srcEmpty');
         }
       } catch (e) {
         if (up) streamer.discard(up);
@@ -249,7 +250,7 @@ async function runJob(job) {
         if (e.fatal) throw e;
         failsWithoutProgress++;
         if (failsWithoutProgress > MAX_FAILS_WITHOUT_PROGRESS) {
-          throw new Error(`la fonte non risponde più (${e.message})`);
+          throw new AppError('srv.srcGone', { msg: e.message });
         }
         const reason = e.message === 'terminated' ? 'fonte interrotta' : e.message;
         console.log(`Preparazione ${job.filename}: ${reason} al byte ${job.written}, nuovo tentativo ${failsWithoutProgress}`);
