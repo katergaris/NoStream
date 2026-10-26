@@ -66,7 +66,8 @@ PC as a portable app** (unzip and double-click, nothing to install). You use it:
 - **Nuvio plugins** (local scrapers) run on the server in a locked-down process.
 - **Videos from links**: YouTube and the other yt-dlp sites, single videos or whole
   playlists, video or audio only (m4a/mp3/opus).
-- **Works as a Nuvio addon** too, with entries that download through Nuvio itself.
+- **Two Nuvio addons**: *Streaming* gives one verified, working link per resolution to
+  watch right away; *Downloads* gives entries that download through Nuvio itself.
 - **Guided first run**, **dark/light theme**, **5 languages** (English, Italian,
   Spanish, French, German), works on phones and desktops.
 
@@ -246,10 +247,22 @@ NoStream updates yt-dlp by itself at startup and once a day, without rebuilding 
 
 ## Using it inside Nuvio
 
-1. In NoStream, open **Settings → Install in Nuvio** and copy the addon URL (on the
-   Windows portable it shows your PC's network address).
-2. In Nuvio: **Settings → Addons**, paste the URL.
-3. Search a title as usual. Among the streams you'll find NoStream's entries:
+NoStream offers **two addons**; install one or both. **Settings → Install in Nuvio** shows
+both URLs (on the Windows portable, with your PC's network address). In Nuvio go to
+**Settings → Addons** and paste them.
+
+### ▶ Streaming: `/watch/manifest.json`
+
+For each movie or episode you get **one link per resolution** (4K, 1080p, 720p, 480p),
+picked among all your sources and **tested before it's shown**: NoStream reads the first
+bytes of the video (direct files) or the playlist and first segment (HLS), and only keeps
+links that really return video. Your audio language comes first. Playback goes through
+NoStream, so the source sees exactly the request that was tested (headers, server IP).
+For HLS, segments go through NoStream too. Results are cached for 10 minutes.
+
+### ⬇️ Downloads: `/manifest.json`
+
+Search a title as usual. Among the streams you'll find NoStream's entries:
    - **⬇️ Downloadable**: direct file, full speed, with size and resume;
    - **🔄 Needs converting**: HLS, converted on the server;
    - **📦 Prepare on the server**: downloads it on the server first; it then becomes
@@ -345,6 +358,7 @@ src/nuvio.js           Nuvio account: profiles, addons and plugins (read-only)
 src/plugins.js         Nuvio plugins: repositories, code, results
 src/plugin-runner/     the locked-down process that runs plugins
 src/i18n.js            server-side translations
+src/watch.js           streaming addon: link verification and playback proxy
 public/                web app (vanilla JS, no build); texts in public/i18n/<lang>.json
 packaging/windows/     NoStream.exe launcher (Go) and portable zip build
 ```
@@ -365,7 +379,9 @@ Main API (JSON):
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/manifest.json`, `/stream/:type/:id.json` | Stremio/Nuvio addon |
+| GET | `/manifest.json`, `/stream/:type/:id.json` | Downloads addon for Stremio/Nuvio |
+| GET | `/watch/manifest.json`, `/watch/stream/:type/:id.json` | Streaming addon (one verified link per resolution) |
+| GET | `/play/:data/:name` | Playback proxy used by the streaming addon (direct files with `Range`, HLS with rewritten playlists) |
 | GET | `/api/search?query=` | TMDB search |
 | GET | `/api/seasons/:tmdbId`, `/api/episodes/:tmdbId/:season` | Seasons and episodes |
 | GET | `/api/streams?tmdbId=&type=&season=&episode=` | Sources from addons and plugins, ranked |

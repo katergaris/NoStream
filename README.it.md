@@ -68,7 +68,8 @@ programma portable** (estrai lo zip e doppio clic, niente da installare). Lo usi
 - **Plugin di Nuvio** (scraper locali), eseguiti sul server in un processo chiuso.
 - **Video da link**: YouTube e gli altri siti di yt-dlp, video singoli o playlist intere,
   video o solo audio (m4a/mp3/opus).
-- **Funziona anche come addon di Nuvio**, con voci che si scaricano dal download di Nuvio.
+- **Due addon per Nuvio**: *Streaming* dà un solo link per risoluzione, verificato e
+  funzionante, da guardare subito; *Download* dà le voci da scaricare con Nuvio stesso.
 - **Primo avvio guidato**, **tema scuro e chiaro**, **5 lingue** (italiano, inglese,
   spagnolo, francese, tedesco), su telefono e computer.
 
@@ -249,10 +250,23 @@ ricostruire nulla.
 
 ## Usarlo dentro Nuvio
 
-1. In NoStream apri **Impostazioni → Installa in Nuvio** e copia l'URL dell'addon. Nella
-   versione Windows mostra l'indirizzo del PC in rete.
-2. In Nuvio: **Impostazioni → Addon**, incolla l'URL.
-3. Cerca un titolo come sempre. Tra gli stream trovi le voci di NoStream:
+NoStream offre **due addon**: installa quello che ti serve, o entrambi. **Impostazioni →
+Installa in Nuvio** mostra i due URL (nella versione Windows con l'indirizzo del PC in
+rete). In Nuvio vai in **Impostazioni → Addon** e incollali.
+
+### ▶ Streaming: `/watch/manifest.json`
+
+Per ogni film o episodio trovi **un solo link per risoluzione** (4K, 1080p, 720p, 480p),
+scelto tra tutte le tue fonti e **provato prima di mostrarlo**: NoStream legge i primi
+byte del video (file diretti) o la playlist e il primo segmento (HLS), e tiene solo i
+link che restituiscono davvero un video. Prima la tua lingua audio. La riproduzione passa
+da NoStream, così la fonte riceve esattamente la richiesta che è stata provata (header,
+IP del server); per gli HLS passano da NoStream anche i segmenti. I risultati restano in
+memoria 10 minuti.
+
+### ⬇️ Download: `/manifest.json`
+
+Cerca un titolo come sempre. Tra gli stream trovi le voci di NoStream:
    - **⬇️ Scaricabile**: file diretto, velocità piena, con dimensione e ripresa;
    - **🔄 Da convertire**: HLS, convertito sul server;
    - **📦 Prepara sul server**: lo scarica prima sul server; poi la voce diventa

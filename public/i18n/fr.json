@@ -414,5 +414,14 @@
   "srv.addon.hlsDetails": "HLS · converti à la volée sur le serveur : taille connue seulement à la fin de la conversion, reprenable",
   "srv.addon.readyDetails": "Déjà téléchargé sur le serveur{size} · arrive en quelques secondes par le réseau de la maison",
   "srv.addon.preparingDetails": "En préparation sur le serveur : vous pouvez déjà le télécharger, la suite arrive au fur et à mesure",
-  "srv.addon.prepareDetails": "Télécharge le fichier sur le serveur sans utiliser le téléphone ; quand il est prêt, vous le trouvez ici sous « ✅ Prêt sur le serveur »"
+  "srv.addon.prepareDetails": "Télécharge le fichier sur le serveur sans utiliser le téléphone ; quand il est prêt, vous le trouvez ici sous « ✅ Prêt sur le serveur »",
+  "nuvio.lead2": "NoStream propose deux addons pour Nuvio : installez celui qu'il vous faut, ou les deux.",
+  "nuvio.watchTitle": "▶ Streaming",
+  "nuvio.watchText": "Pour regarder tout de suite : pour chaque film ou épisode, un seul lien par résolution (4K, 1080p, 720p…), déjà testé par NoStream et donc fonctionnel.",
+  "nuvio.downloadTitle": "⬇️ Téléchargements",
+  "nuvio.downloadText": "Pour télécharger sur le téléphone : les entrées « Téléchargeable », « À convertir » et « Préparer sur le serveur ».",
+  "srv.watch.description": "Un lien vérifié par résolution, prêt à regarder, depuis les sources de NoStream",
+  "srv.watch.otherQuality": "qualité non indiquée",
+  "srv.watch.direct": "Fichier direct",
+  "srv.watch.verified": "✓ vérifié par NoStream ({s} s)"
 }
