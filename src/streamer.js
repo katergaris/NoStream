@@ -216,7 +216,8 @@ async function streamDirect(sourceUrl, headers, filename, req, res, refreshSourc
     res.status(206);
     res.setHeader('Content-Range', upstream.headers.get('content-range'));
   }
-  res.setHeader('Content-Disposition', contentDisposition(filename));
+  // Senza nome (streaming verso un player) niente «allegato».
+  if (filename) res.setHeader('Content-Disposition', contentDisposition(filename));
   res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/octet-stream');
   if (range || upstream.headers.get('accept-ranges') === 'bytes') res.setHeader('Accept-Ranges', 'bytes');
   const len = upstream.headers.get('content-length');

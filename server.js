@@ -11,6 +11,7 @@ const ytdlp = require('./src/ytdlp');
 const nuvio = require('./src/nuvio');
 const plugins = require('./src/plugins');
 const i18n = require('./src/i18n');
+const watch = require('./src/watch');
 
 const cfg = config.get();
 
@@ -622,13 +623,12 @@ app.get('/manifest.json', addonCors, (req, res) => {
   });
 });
 
-app.get('/stream/:type/:id.json', addonCors, asyncRoute(async (req, res) => {
-  const { type, id } = req.params;
-  if (type !== 'movie' && type !== 'series') return res.json({ streams: [] });
-
+// Fonti per un titolo richiesto da Nuvio (id Stremio): addon + plugin, più il nome del
+// titolo per i file. Usata dai due addon, download e streaming.
+async function gatherForAddon(type, id) {
   const addonList = config.listAddons();
   const pluginsOn = !!plugins.settings().enabled;
-  if (!addonList.length && !pluginsOn) return res.json({ streams: [] });
+  if (!addonList.length && !pluginsOn) return { downloadable: [], label: id };
 
   const { imdbId, season, episode } = parseStremioId(id);
   // L'id TMDB serve ai plugin (e il titolo al nome del file): si chiede in parallelo agli addon.
@@ -642,19 +642,23 @@ app.get('/stream/:type/:id.json', addonCors, asyncRoute(async (req, res) => {
       : { streams: [] }
   ]);
   const downloadable = [...fromAddons.streams, ...fromPlugins.streams].filter(s => s.supported);
-  if (!downloadable.length) return res.json({ streams: [] });
 
   let label = id;
-  try {
-    const info = await infoPromise;
-    if (info && info.title) {
-      label = type === 'series'
-        ? `${info.title} S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`
-        : `${info.title}${info.year ? ` (${info.year})` : ''}`;
-    }
-  } catch {
-    // TMDB non configurata/raggiungibile: usa l'id grezzo come titolo del file
+  const info = await infoPromise;
+  if (info && info.title) {
+    label = type === 'series'
+      ? `${info.title} S${String(season).padStart(2, '0')}E${String(episode).padStart(2, '0')}`
+      : `${info.title}${info.year ? ` (${info.year})` : ''}`;
   }
+  return { downloadable, label };
+}
+
+app.get('/stream/:type/:id.json', addonCors, asyncRoute(async (req, res) => {
+  const { type, id } = req.params;
+  if (type !== 'movie' && type !== 'series') return res.json({ streams: [] });
+
+  const { downloadable, label } = await gatherForAddon(type, id);
+  if (!downloadable.length) return res.json({ streams: [] });
 
   const entries = await rankDownloadable(downloadable);
 
@@ -728,6 +732,85 @@ app.get('/stream/:type/:id.json', addonCors, asyncRoute(async (req, res) => {
   });
 
   res.json({ streams: result });
+}));
+
+// ---- Addon «NoStream ▶ Streaming» (un link verificato per risoluzione) ----
+
+const WATCH_ADDON_ID = 'org.nostream.watch';
+const QUALITY_LABEL = { 2160: '4K', 1080: '1080p', 720: '720p', 480: '480p', 0: '' };
+
+app.get('/watch/manifest.json', addonCors, (req, res) => {
+  res.json({
+    id: WATCH_ADDON_ID,
+    version: '1.0.0',
+    name: 'NoStream ▶ Streaming',
+    logo: `${publicProtocol(req)}://${req.get('host')}/logo-256.png`,
+    description: req.t('srv.watch.description'),
+    resources: ['stream'],
+    types: ['movie', 'series'],
+    idPrefixes: ['tt'],
+    catalogs: [],
+    behaviorHints: { configurable: false }
+  });
+});
+
+// Link di riproduzione: /play/<payload>/<nome>. payload = { u: url, h: header, k: kind }.
+function playUrl(req, target, headers, kind, name) {
+  const data = encodeDownloadPayload({ u: target, h: headers || undefined, k: kind });
+  const base = `${publicProtocol(req)}://${req.get('host')}`;
+  return `${base}/play/${data}/${encodeURIComponent(name)}`;
+}
+
+app.get('/watch/stream/:type/:id.json', addonCors, asyncRoute(async (req, res) => {
+  const { type, id } = req.params;
+  if (type !== 'movie' && type !== 'series') return res.json({ streams: [] });
+  const { downloadable } = await gatherForAddon(type, id);
+  if (!downloadable.length) return res.json({ streams: [] });
+
+  // Stesso link da più fonti: uno solo
+  const unique = new Map();
+  for (const s of downloadable) {
+    const key = s.url || s.externalUrl;
+    if (!unique.has(key)) unique.set(key, { ...s, kind: streamKind(s) });
+  }
+  const resolve = async ext => {
+    const r = await extractor.resolveExternalUrl(ext);
+    return { url: r.sourceUrl, headers: r.headers };
+  };
+  const picked = await watch.pick(`${type}:${id}`, [...unique.values()], { lang: String(cfg.language || 'it').slice(0, 2), resolve });
+  const streams = picked.map(({ quality, stream, check }) => {
+    const label = QUALITY_LABEL[quality] || req.t('srv.watch.otherQuality');
+    const name = check.kind === 'hls' ? 'index.m3u8' : `video${streamer.guessExtension(check.url)}`;
+    return {
+      name: `NoStream ▶ ${label}`,
+      title: [
+        String(stream.title || '').split('\n')[0],
+        `${check.kind === 'hls' ? 'HLS' : req.t('srv.watch.direct')}${stream.size ? ` · ${formatSize(stream.size)}` : ''} · ${(stream.addonNames || [stream.addonName]).join(', ')}`,
+        req.t('srv.watch.verified', { s: (check.ms / 1000).toFixed(1) })
+      ].filter(Boolean).join('\n'),
+      url: playUrl(req, check.url, check.headers, check.kind, name),
+      behaviorHints: { bingeGroup: `nostream-watch-${quality}` }
+    };
+  });
+  console.log(`[watch] ${type} ${id}: ${streams.length} link verificati (${picked.map(p => `${QUALITY_LABEL[p.quality] || '?'} al tentativo ${p.tried}`).join(', ')})`);
+  res.json({ streams });
+}));
+
+app.get(['/play/:data/:name', '/play/:data'], asyncRoute(async (req, res) => {
+  let p;
+  try { p = decodeDownloadPayload(req.params.data); } catch { return res.status(400).end(); }
+  if (!p.u || !/^https?:\/\//i.test(p.u)) return res.status(400).end();
+  if (p.k === 'hls') {
+    const proxied = abs => playUrl(req, abs, p.h, 'hls', /\.m3u8(\?|$)/i.test(abs) ? 'index.m3u8' : 'part');
+    try {
+      await watch.serveHlsPart(p.u, p.h, req, res, proxied);
+    } catch (e) {
+      if (!res.headersSent) res.status(502).end();
+      else res.destroy();
+    }
+    return;
+  }
+  await watch.serveDirect(p.u, p.h, req, res);
 }));
 
 // ---- Static files ----

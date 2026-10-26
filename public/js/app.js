@@ -1925,11 +1925,12 @@ function urlField(url) {
   ]);
 }
 
-function nuvioBlock() {
+// path: manifest dell'addon (download «/manifest.json», streaming «/watch/manifest.json»).
+function nuvioBlock(path = '/manifest.json', { notes = true } = {}) {
   const box = el('div');
   const local = /^(localhost|127\.|\[?::1\]?$)/.test(location.hostname);
   if (!local) {
-    box.appendChild(el('div', { class: 'field' }, [el('span', {}, t('nuvio.url')), urlField(manifestUrl())]));
+    box.appendChild(el('div', { class: 'field' }, [el('span', {}, t('nuvio.url')), urlField(`${location.origin}${path}`)]));
   } else {
     // Aperta dal PC stesso (versione portable): al telefono serve l'indirizzo del PC in rete.
     const list = el('div', { class: 'field' }, [el('span', {}, t('nuvio.url')), el('div', { class: 'meta' }, t('common.loading'))]);
@@ -1939,21 +1940,26 @@ function nuvioBlock() {
       list.appendChild(el('span', {}, net.ips.length > 1 ? t('nuvio.urlsLan') : t('nuvio.url')));
       if (!net.ips.length) list.appendChild(el('div', { class: 'note err' }, [icon('alert'), el('span', {}, t('nuvio.noLan'))]));
       net.ips.forEach((ip, i) => {
-        const wrap = urlField(`http://${ip}:${location.port || net.port}/manifest.json`);
+        const wrap = urlField(`http://${ip}:${location.port || net.port}${path}`);
         if (i) wrap.style.marginTop = '12px';
         list.appendChild(wrap);
       });
-      if (net.portable) box.appendChild(el('div', { class: 'note' }, [icon('info'), el('span', {}, t('nuvio.firewall'))]));
+      if (net.portable && notes) box.appendChild(el('div', { class: 'note' }, [icon('info'), el('span', {}, t('nuvio.firewall'))]));
     }).catch(() => { list.lastChild.textContent = '?'; });
   }
-  box.appendChild(el('div', { class: 'note' }, [icon('info'), el('span', {}, t('nuvio.howto'))]));
+  if (notes) box.appendChild(el('div', { class: 'note' }, [icon('info'), el('span', {}, t('nuvio.howto'))]));
   return box;
 }
 
 function renderNuvioPage(view) {
   view.appendChild(subAppbar(t('settings.nuvio')));
-  view.appendChild(el('p', { class: 'lead' }, t('nuvio.lead')));
-  view.appendChild(nuvioBlock());
+  view.appendChild(el('p', { class: 'lead' }, t('nuvio.lead2')));
+  view.appendChild(el('div', { class: 'sec' }, t('nuvio.watchTitle')));
+  view.appendChild(el('p', { class: 'meta', style: 'margin:0 4px' }, t('nuvio.watchText')));
+  view.appendChild(nuvioBlock('/watch/manifest.json', { notes: false }));
+  view.appendChild(el('div', { class: 'sec' }, t('nuvio.downloadTitle')));
+  view.appendChild(el('p', { class: 'meta', style: 'margin:0 4px' }, t('nuvio.downloadText')));
+  view.appendChild(nuvioBlock('/manifest.json'));
 }
 
 // ---- TMDB
