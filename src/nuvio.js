@@ -235,6 +235,7 @@ function pluginStatus(s) {
           status: x.status === 'ok' && !plugins.hasCode(x.key) ? 'unreachable' : x.status,
           error: x.error,
           used: !excluded.has(x.key) && x.status === 'ok',
+          animationOnly: plugins.animationOnly(x.name),
           last: st
         };
       })

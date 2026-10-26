@@ -159,9 +159,14 @@ function active() {
   return [...code.keys()].filter(k => !excluded.has(k));
 }
 
+// Plugin di soli anime/cartoni: cercano per titolo e, su un film o una serie qualsiasi,
+// trovano spesso qualcosa di sbagliato con un nome simile. Si usano solo per titoli
+// d'animazione (genere TMDB).
+function animationOnly(name) { return /anime|toon|cartoon|hentai|donghua/i.test(name || ''); }
+
 // Stream dei plugin attivi per un titolo, già nel formato degli stream degli addon.
-async function getStreams(tmdbId, mediaType, season, episode, timeoutMs) {
-  const keys = active().filter(k => (code.get(k).types || []).includes(mediaType));
+async function getStreams(tmdbId, mediaType, season, episode, timeoutMs, { animation = false } = {}) {
+  const keys = active().filter(k => (code.get(k).types || []).includes(mediaType) && (animation || !animationOnly(code.get(k).name)));
   if (!keys.length || !tmdbId) return { streams: [], errors: [] };
   const args = { tmdbId, mediaType, season: season ?? null, episode: episode ?? null };
   const streams = [];
@@ -203,4 +208,4 @@ function statsFor(key) { return stats.get(key) || null; }
 
 function hasCode(key) { return code.has(key); }
 
-module.exports = { refresh, getStreams, statsFor, hasCode, settings };
+module.exports = { refresh, getStreams, statsFor, hasCode, settings, animationOnly };

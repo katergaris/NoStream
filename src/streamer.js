@@ -44,13 +44,14 @@ function contentDisposition(filename) {
   return `attachment; filename="${ascii}"; filename*=UTF-8''${utf8}`;
 }
 
-function prepareDownload({ sourceUrl, headers, title, streamTitle }) {
+// kind: tipo già rilevato da NoStream (es. playlist HLS senza «.m3u8» nell'URL).
+function prepareDownload({ sourceUrl, headers, title, streamTitle, kind }) {
   if (!sourceUrl || /^magnet:/i.test(sourceUrl)) {
     const err = new Error('Stream non supportato: nessun URL diretto disponibile (solo infoHash/torrent)');
     err.status = 400;
     throw err;
   }
-  const type = detectType(sourceUrl);
+  const type = kind === 'hls' ? 'hls' : detectType(sourceUrl);
   const ext = type === 'hls' ? '.ts' : guessExtension(sourceUrl);
   const baseName = sanitizeFilename(title || streamTitle || 'download');
   return { sourceUrl, headers: headers || null, filename: `${baseName}${ext}`, type };
