@@ -22,7 +22,7 @@ function quality(s) {
   if (/2160p|\b4k\b|\buhd\b/i.test(txt)) return 2160;
   if (/1080p|\bfhd\b/i.test(txt)) return 1080;
   if (/720p|\bhd\b/i.test(txt)) return 720;
-  if (/576p|480p|\bsd\b/i.test(txt)) return 480;
+  if (/576p|480p|360p|240p|\bsd\b/i.test(txt)) return 480;
   return 0;
 }
 
@@ -157,18 +157,35 @@ async function pick(cacheKey, streams, { lang, resolve }) {
 
 // ---- Proxy di riproduzione
 
+// Nome con cui il proxy espone un pezzo dello stream. Alcuni player (ffmpeg, mpv, VLC)
+// accettano solo segmenti con estensioni note: quelli «travestiti» (.jpg, .png, senza
+// estensione) diventano .ts, che è quello che contengono.
+const SEGMENT_EXT = new Set(['ts', 'm4s', 'mp4', 'm4v', 'aac', 'm4a', 'mp3', 'ac3', 'ec3', 'vtt', 'webvtt']);
+function partName(abs, isPlaylistLine) {
+  let ext = '';
+  try { ext = (new URL(abs).pathname.match(/\.([a-z0-9]+)$/i) || [])[1] || ''; } catch {}
+  ext = ext.toLowerCase();
+  if (ext === 'm3u8' || isPlaylistLine) return 'index.m3u8';
+  return `seg.${SEGMENT_EXT.has(ext) ? ext : 'ts'}`;
+}
+
 // Playlist HLS: ogni URI (segmenti, varianti, chiavi, sottotitoli) passa da NoStream.
 function rewritePlaylist(body, baseUrl, proxied) {
-  return body.split(/\r?\n/).map(line => {
+  const lines = body.split(/\r?\n/);
+  return lines.map((line, i) => {
     if (!line) return line;
     if (line.startsWith('#')) {
       return line.replace(/URI="([^"]+)"/g, (m, uri) => {
         const abs = absolute(uri, baseUrl);
-        return abs ? `URI="${proxied(abs)}"` : m;
+        if (!abs) return m;
+        const name = /^#EXT-X-(KEY|SESSION-KEY)/i.test(line) ? 'key.bin' : partName(abs, /^#EXT-X-(MEDIA|I-FRAME-STREAM-INF)/i.test(line));
+        return `URI="${proxied(abs, name)}"`;
       });
     }
     const abs = absolute(line.trim(), baseUrl);
-    return abs ? proxied(abs) : line;
+    // La riga dopo #EXT-X-STREAM-INF è una playlist variante
+    const variant = i > 0 && /^#EXT-X-STREAM-INF/i.test(lines[i - 1]);
+    return abs ? proxied(abs, partName(abs, variant)) : line;
   }).join('\n');
 }
 
@@ -216,4 +233,4 @@ function serveDirect(url, headers, req, res) {
   return streamer.streamDirect(url, headers, null, req, res, null);
 }
 
-module.exports = { pick, quality, serveHlsPart, serveDirect, ORDER };
+module.exports = { pick, quality, serveHlsPart, serveDirect, partName, ORDER };

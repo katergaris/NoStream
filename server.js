@@ -737,7 +737,7 @@ app.get('/stream/:type/:id.json', addonCors, asyncRoute(async (req, res) => {
 // ---- Addon «NoStream ▶ Streaming» (un link verificato per risoluzione) ----
 
 const WATCH_ADDON_ID = 'org.nostream.watch';
-const QUALITY_LABEL = { 2160: '4K', 1080: '1080p', 720: '720p', 480: '480p', 0: '' };
+const QUALITY_LABEL = { 2160: '4K', 1080: '1080p', 720: '720p', 480: 'SD', 0: '' };
 
 app.get('/watch/manifest.json', addonCors, (req, res) => {
   res.json({
@@ -801,7 +801,7 @@ app.get(['/play/:data/:name', '/play/:data'], asyncRoute(async (req, res) => {
   try { p = decodeDownloadPayload(req.params.data); } catch { return res.status(400).end(); }
   if (!p.u || !/^https?:\/\//i.test(p.u)) return res.status(400).end();
   if (p.k === 'hls') {
-    const proxied = abs => playUrl(req, abs, p.h, 'hls', /\.m3u8(\?|$)/i.test(abs) ? 'index.m3u8' : 'part');
+    const proxied = (abs, name) => playUrl(req, abs, p.h, 'hls', name);
     try {
       await watch.serveHlsPart(p.u, p.h, req, res, proxied);
     } catch (e) {
