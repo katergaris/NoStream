@@ -161,16 +161,17 @@ async function pick(cacheKey, streams, { lang, resolve }) {
 // accettano solo segmenti con estensioni note: quelli «travestiti» (.jpg, .png, senza
 // estensione) diventano .ts, che è quello che contengono.
 const SEGMENT_EXT = new Set(['ts', 'm4s', 'mp4', 'm4v', 'aac', 'm4a', 'mp3', 'ac3', 'ec3', 'vtt', 'webvtt']);
-function partName(abs, isPlaylistLine) {
+function partName(abs, isPlaylistLine, { subtitles = false } = {}) {
   let ext = '';
   try { ext = (new URL(abs).pathname.match(/\.([a-z0-9]+)$/i) || [])[1] || ''; } catch {}
   ext = ext.toLowerCase();
-  if (ext === 'm3u8' || isPlaylistLine) return 'index.m3u8';
-  return `seg.${SEGMENT_EXT.has(ext) ? ext : 'ts'}`;
+  if (ext === 'm3u8' || isPlaylistLine) return subtitles ? 'subs.m3u8' : 'index.m3u8';
+  return `seg.${SEGMENT_EXT.has(ext) ? ext : (subtitles ? 'vtt' : 'ts')}`;
 }
 
 // Playlist HLS: ogni URI (segmenti, varianti, chiavi, sottotitoli) passa da NoStream.
-function rewritePlaylist(body, baseUrl, proxied) {
+// subtitles: questa è la playlist di una traccia di sottotitoli (segmenti WebVTT).
+function rewritePlaylist(body, baseUrl, proxied, { subtitles = false } = {}) {
   const lines = body.split(/\r?\n/);
   return lines.map((line, i) => {
     if (!line) return line;
@@ -178,19 +179,21 @@ function rewritePlaylist(body, baseUrl, proxied) {
       return line.replace(/URI="([^"]+)"/g, (m, uri) => {
         const abs = absolute(uri, baseUrl);
         if (!abs) return m;
-        const name = /^#EXT-X-(KEY|SESSION-KEY)/i.test(line) ? 'key.bin' : partName(abs, /^#EXT-X-(MEDIA|I-FRAME-STREAM-INF)/i.test(line));
+        const name = /^#EXT-X-(KEY|SESSION-KEY)/i.test(line)
+          ? 'key.bin'
+          : partName(abs, /^#EXT-X-(MEDIA|I-FRAME-STREAM-INF)/i.test(line), { subtitles: /TYPE=SUBTITLES/i.test(line) });
         return `URI="${proxied(abs, name)}"`;
       });
     }
     const abs = absolute(line.trim(), baseUrl);
     // La riga dopo #EXT-X-STREAM-INF è una playlist variante
     const variant = i > 0 && /^#EXT-X-STREAM-INF/i.test(lines[i - 1]);
-    return abs ? proxied(abs, partName(abs, variant)) : line;
+    return abs ? proxied(abs, partName(abs, variant, { subtitles })) : line;
   }).join('\n');
 }
 
 // GET di un pezzo di uno stream HLS (playlist o segmento) con gli header della fonte.
-async function serveHlsPart(target, headers, req, res, proxied) {
+async function serveHlsPart(target, headers, req, res, proxied, { subtitles = false } = {}) {
   const up = await fetch(target, {
     headers: { ...(headers || {}), ...(req.headers.range ? { Range: req.headers.range } : {}) },
     redirect: 'follow'
@@ -207,7 +210,7 @@ async function serveHlsPart(target, headers, req, res, proxied) {
     if (body.startsWith('#EXTM3U')) {
       res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
       res.setHeader('Cache-Control', 'no-store');
-      res.send(rewritePlaylist(body, up.url || target, proxied));
+      res.send(rewritePlaylist(body, up.url || target, proxied, { subtitles }));
       return;
     }
     res.type(type || 'application/octet-stream').send(body);

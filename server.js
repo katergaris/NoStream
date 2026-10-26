@@ -803,7 +803,7 @@ app.get(['/play/:data/:name', '/play/:data'], asyncRoute(async (req, res) => {
   if (p.k === 'hls') {
     const proxied = (abs, name) => playUrl(req, abs, p.h, 'hls', name);
     try {
-      await watch.serveHlsPart(p.u, p.h, req, res, proxied);
+      await watch.serveHlsPart(p.u, p.h, req, res, proxied, { subtitles: req.params.name === 'subs.m3u8' });
     } catch (e) {
       if (!res.headersSent) res.status(502).end();
       else res.destroy();
