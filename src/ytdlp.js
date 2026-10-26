@@ -20,8 +20,10 @@ const streamer = require('./streamer');
 const DATA = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const DIR = path.join(DATA, 'links');
 const BIN_DIR = path.join(DATA, 'bin');
-const UPDATED_BIN = path.join(BIN_DIR, 'yt-dlp');
-const RELEASE_URL = 'https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp';
+// Su Windows (versione portable) l'eseguibile è yt-dlp.exe, che non richiede Python.
+const IS_WIN = process.platform === 'win32';
+const UPDATED_BIN = path.join(BIN_DIR, IS_WIN ? 'yt-dlp.exe' : 'yt-dlp');
+const RELEASE_URL = `https://github.com/yt-dlp/yt-dlp/releases/latest/download/${IS_WIN ? 'yt-dlp.exe' : 'yt-dlp'}`;
 
 const MAX_RUNNING = 2;
 const INFO_TIMEOUT_MS = 90 * 1000;

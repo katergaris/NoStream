@@ -424,6 +424,15 @@ app.get('/api/link/:key/:filename', (req, res) => {
   ytdlp.serve(job, req, res);
 });
 
+// Indirizzi IPv4 del server nella rete locale: servono quando la pagina è aperta da
+// localhost (versione portable sul PC) per dare al telefono l'URL giusto dell'addon.
+app.get('/api/network', (req, res) => {
+  const ips = Object.values(require('os').networkInterfaces()).flat()
+    .filter(i => i && i.family === 'IPv4' && !i.internal && !/^169\.254\./.test(i.address))
+    .map(i => i.address);
+  res.json({ port: cfg.port, ips, portable: !!process.env.NOSTREAM_PORTABLE });
+});
+
 app.get('/api/ytdlp', asyncRoute(async (req, res) => {
   res.json({ version: await ytdlp.version(), settings: ytdlp.settings() });
 }));

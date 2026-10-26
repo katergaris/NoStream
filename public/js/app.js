@@ -1898,18 +1898,54 @@ function formatDateTime(ms) {
 
 function manifestUrl() { return `${location.origin}/manifest.json`; }
 
-function nuvioBlock() {
-  const url = manifestUrl();
+// Copia negli appunti anche dove navigator.clipboard non c'è (pagina in http da un IP).
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const area = el('textarea', { style: 'position:fixed;opacity:0' });
+    area.value = text;
+    document.body.appendChild(area);
+    area.select();
+    const ok = document.execCommand('copy');
+    area.remove();
+    if (!ok) throw new Error('copy');
+  }
+}
+
+function urlField(url) {
   return el('div', {}, [
-    el('label', { class: 'field' }, [el('span', {}, t('nuvio.url')), el('input', { class: 'input mono', readonly: true, value: url, onclick: e => e.target.select() })]),
-    el('div', { class: 'btn-row' }, [
-      el('button', { class: 'btn primary', type: 'button', onclick: async () => {
-        try { await navigator.clipboard.writeText(url); toast(t('nuvio.copied')); }
-        catch { toast(t('nuvio.copyFailed'), true); }
-      } }, [icon('copy'), t('nuvio.copy')])
-    ]),
-    el('div', { class: 'note' }, [icon('info'), el('span', {}, t('nuvio.howto'))])
+    el('input', { class: 'input mono', readonly: true, value: url, onclick: e => e.target.select(), 'aria-label': t('nuvio.url') }),
+    el('div', { class: 'btn-row', style: 'margin-top:8px' }, el('button', { class: 'btn primary', type: 'button', onclick: async () => {
+      try { await copyText(url); toast(t('nuvio.copied')); }
+      catch { toast(t('nuvio.copyFailed'), true); }
+    } }, [icon('copy'), t('nuvio.copy')]))
   ]);
+}
+
+function nuvioBlock() {
+  const box = el('div');
+  const local = /^(localhost|127\.|\[?::1\]?$)/.test(location.hostname);
+  if (!local) {
+    box.appendChild(el('div', { class: 'field' }, [el('span', {}, t('nuvio.url')), urlField(manifestUrl())]));
+  } else {
+    // Aperta dal PC stesso (versione portable): al telefono serve l'indirizzo del PC in rete.
+    const list = el('div', { class: 'field' }, [el('span', {}, t('nuvio.url')), el('div', { class: 'meta' }, t('common.loading'))]);
+    box.appendChild(list);
+    api('/network').then(net => {
+      list.innerHTML = '';
+      list.appendChild(el('span', {}, net.ips.length > 1 ? t('nuvio.urlsLan') : t('nuvio.url')));
+      if (!net.ips.length) list.appendChild(el('div', { class: 'note err' }, [icon('alert'), el('span', {}, t('nuvio.noLan'))]));
+      net.ips.forEach((ip, i) => {
+        const wrap = urlField(`http://${ip}:${location.port || net.port}/manifest.json`);
+        if (i) wrap.style.marginTop = '12px';
+        list.appendChild(wrap);
+      });
+      if (net.portable) box.appendChild(el('div', { class: 'note' }, [icon('info'), el('span', {}, t('nuvio.firewall'))]));
+    }).catch(() => { list.lastChild.textContent = '?'; });
+  }
+  box.appendChild(el('div', { class: 'note' }, [icon('info'), el('span', {}, t('nuvio.howto'))]));
+  return box;
 }
 
 function renderNuvioPage(view) {

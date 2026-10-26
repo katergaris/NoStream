@@ -1,0 +1,32 @@
+NoStream — versione portable per Windows
+========================================
+
+AVVIO
+  Doppio clic su NoStream.exe. Si apre il browser su http://localhost:4321
+  Lascia aperta la finestra nera: chiudendola NoStream si ferma.
+
+PRIMA VOLTA
+  - Windows può mostrare «PC protetto da Windows» (SmartScreen): «Ulteriori
+    informazioni» → «Esegui comunque». Succede perché il programma non è firmato.
+  - Windows può chiedere se consentire l'accesso alla rete: scegli «Reti private».
+    Serve se vuoi usare NoStream anche dal telefono (Nuvio o browser).
+  - NoStream ti guida: API key TMDB, addon (o il tuo account Nuvio).
+
+DOVE STA TUTTO
+  config.json   impostazioni, key TMDB, accesso all'account Nuvio. NON condividerlo.
+  data\         file preparati sul PC, video da link, aggiornamenti di yt-dlp, log.
+  app\          il programma (Node, NoStream, ffmpeg, yt-dlp): non modificarlo.
+  Niente viene scritto fuori da questa cartella. Per disinstallare: cancellala.
+
+DOVE NON METTERLA
+  Non in C:\Programmi o in altre cartelle protette: NoStream deve poter scrivere
+  config.json e data\. Vanno bene Documenti, Desktop, un altro disco, una chiavetta.
+
+AGGIORNARE
+  Scarica il nuovo zip e sostituisci solo NoStream.exe e la cartella app\.
+  config.json e data\ restano.
+
+DAL TELEFONO
+  In NoStream: Impostazioni → Installa in Nuvio mostra l'indirizzo del PC da usare.
+  Il PC deve restare acceso e nella stessa rete (o raggiungibile con una VPN come
+  Tailscale).

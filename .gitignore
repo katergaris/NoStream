@@ -5,3 +5,6 @@ psw
 .DS_Store
 Thumbs.db
 data/
+build/
+dist/
+packaging/windows/launcher/rsrc_windows_*.syso
