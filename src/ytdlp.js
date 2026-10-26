@@ -16,6 +16,7 @@ const { spawn } = require('child_process');
 
 const config = require('./config');
 const streamer = require('./streamer');
+const { AppError, errorText } = require('./i18n');
 
 const DATA = process.env.DATA_DIR || path.join(__dirname, '..', 'data');
 const DIR = path.join(DATA, 'links');
@@ -76,7 +77,7 @@ function run(args, { timeoutMs = 0, onLine } = {}) {
     child.stderr.on('data', d => { err += d.toString(); });
     child.on('error', e => {
       if (timer) clearTimeout(timer);
-      reject(e.code === 'ENOENT' ? new Error('yt-dlp non è installato sul server') : e);
+      reject(e.code === 'ENOENT' ? new AppError('srv.ytdlpMissing') : e);
     });
     child.on('close', code => {
       if (timer) clearTimeout(timer);
@@ -113,9 +114,12 @@ function siteName(d) {
 
 async function info(url) {
   const { code, out, err } = await run(['-J', '--flat-playlist', url], { timeoutMs: INFO_TIMEOUT_MS });
-  if (code !== 0) throw new Error(errorMessage(err, 'Link non supportato o non raggiungibile'));
+  if (code !== 0) {
+    const detail = errorMessage(err, null);
+    throw detail ? new Error(detail) : new AppError('srv.linkUnsupported');
+  }
   let d;
-  try { d = JSON.parse(out); } catch { throw new Error('Risposta di yt-dlp non leggibile'); }
+  try { d = JSON.parse(out); } catch { throw new AppError('srv.ytdlpBadOutput'); }
 
   const isPlaylist = d._type === 'playlist';
   const entries = isPlaylist
@@ -152,7 +156,7 @@ function keyFor(url, mode) {
 
 function metaPath(key) { return path.join(DIR, `${key}.json`); }
 
-function publicView(job) {
+function publicView(job, lang = 'it') {
   return {
     key: job.key,
     title: job.title,
@@ -160,7 +164,7 @@ function publicView(job) {
     size: job.size,
     written: job.written,
     status: job.status,
-    error: job.error,
+    error: errorText(job, lang),
     createdAt: job.createdAt,
     lastAccess: job.lastAccess,
     source: 'link',
@@ -195,8 +199,8 @@ function init() {
 
 function get(key) { return jobs.get(key) || null; }
 
-function list() {
-  return [...jobs.values()].sort((a, b) => b.createdAt - a.createdAt).map(publicView);
+function list(lang) {
+  return [...jobs.values()].sort((a, b) => b.createdAt - a.createdAt).map(j => publicView(j, lang));
 }
 
 function ensure({ url, mode, title, index }) {
@@ -273,6 +277,7 @@ function formatArgs(job) {
 async function start(job) {
   job.status = 'running';
   job.error = null;
+  job.errorKey = null;
   job.written = 0;
   job.size = null;
   save(job);
@@ -317,7 +322,8 @@ async function start(job) {
     console.log(`[yt-dlp] completato: ${job.title} (${Math.round(size / 1024 / 1024)} MB)`);
   } else {
     job.status = 'failed';
-    job.error = errorMessage(result.err, `yt-dlp è uscito con codice ${result.code}`);
+    job.error = errorMessage(result.err, null);
+    if (!job.error) { job.errorKey = 'srv.ytdlpExit'; job.errorVars = { code: result.code }; job.error = `yt-dlp è uscito con codice ${result.code}`; }
     console.log(`[yt-dlp] fallito: ${job.title} — ${job.error}`);
   }
   job.lastAccess = Date.now();
@@ -328,13 +334,13 @@ async function start(job) {
 // Consegna il file pronto (Range gestito da Express).
 function serve(job, req, res) {
   if (job.status !== 'done' || !job.file) {
-    res.status(409).json({ error: 'File non ancora pronto' });
+    res.status(409).json({ error: req.t('srv.notReady') });
     return;
   }
   job.lastAccess = Date.now();
   save(job);
   res.download(job.file, job.filename, { headers: { 'Cache-Control': 'no-store' } }, err => {
-    if (err && !res.headersSent) res.status(404).json({ error: 'File non più presente sul server' });
+    if (err && !res.headersSent) res.status(404).json({ error: req.t('srv.fileGone') });
   });
 }
 
@@ -369,7 +375,7 @@ function update() {
     const before = await version();
     fs.mkdirSync(BIN_DIR, { recursive: true });
     const res = await fetch(RELEASE_URL, { signal: AbortSignal.timeout(120000) });
-    if (!res.ok) throw new Error(`download non riuscito (HTTP ${res.status})`);
+    if (!res.ok) throw new AppError('srv.downloadFailed', { status: res.status });
     const tmp = UPDATED_BIN + '.tmp';
     fs.writeFileSync(tmp, Buffer.from(await res.arrayBuffer()), { mode: 0o755 });
     fs.renameSync(tmp, UPDATED_BIN);

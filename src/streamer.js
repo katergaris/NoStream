@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { AppError } = require('./i18n');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -47,7 +48,7 @@ function contentDisposition(filename) {
 // kind: tipo già rilevato da NoStream (es. playlist HLS senza «.m3u8» nell'URL).
 function prepareDownload({ sourceUrl, headers, title, streamTitle, kind }) {
   if (!sourceUrl || /^magnet:/i.test(sourceUrl)) {
-    const err = new Error('Stream non supportato: nessun URL diretto disponibile (solo infoHash/torrent)');
+    const err = new AppError('srv.torrentOnly');
     err.status = 400;
     throw err;
   }
@@ -63,11 +64,11 @@ async function streamDownload({ sourceUrl, sourceKey, headers, filename, type, r
     // Il limite conta le conversioni ffmpeg in corso, non le connessioni: le riprese di
     // Nuvio si agganciano a un lavoro esistente e non devono mai ricevere 429.
     if (runningHlsJobs() >= limit) {
-      res.status(429).json({ error: 'Troppe conversioni in corso, riprova tra poco' });
+      res.status(429).json({ error: req.t('srv.tooManyHls') });
       return;
     }
     if (!ffmpegAvailable()) {
-      res.status(500).json({ error: 'ffmpeg non è installato o non è nel PATH' });
+      res.status(500).json({ error: req.t('srv.noFfmpeg') });
       return;
     }
     const job = startHlsJob(sourceKey || sourceUrl, sourceUrl, headers, filename);
@@ -177,8 +178,8 @@ async function streamDirect(sourceUrl, headers, filename, req, res, refreshSourc
     }
   } catch (e) {
     const message = e.name === 'AbortError'
-      ? `Timeout: lo stream non ha risposto entro ${FIRST_BYTE_TIMEOUT_MS / 1000}s`
-      : `Impossibile contattare lo stream: ${e.message}`;
+      ? req.t('srv.upstreamTimeout', { s: FIRST_BYTE_TIMEOUT_MS / 1000 })
+      : req.t('srv.upstreamUnreachable', { msg: e.message });
     res.status(502).json({ error: message });
     return;
   }
@@ -206,7 +207,7 @@ async function streamDirect(sourceUrl, headers, filename, req, res, refreshSourc
 
   if (!upstream.ok) {
     discard(first);
-    res.status(502).json({ error: `Il server dello stream ha risposto ${upstream.status} ${upstream.statusText}` });
+    res.status(502).json({ error: req.t('srv.upstreamStatus', { status: `${upstream.status} ${upstream.statusText}` }) });
     return;
   }
 
@@ -512,7 +513,7 @@ async function serveHlsJob(job, req, res, { fresh }) {
   const start = fresh ? 0 : rangeStart(req.headers.range);
 
   if (job.status === 'failed') {
-    res.status(502).json({ error: 'Conversione HLS fallita, riprova' });
+    res.status(502).json({ error: req.t('srv.hlsFailed') });
     return;
   }
 

@@ -3,6 +3,7 @@ const IMAGE_BASE = 'https://image.tmdb.org/t/p/w200';
 const FETCH_TIMEOUT_MS = 30000;
 
 const config = require('./config');
+const { AppError } = require('./i18n');
 const extractor = require('./extractor');
 
 function addonTimeoutMs() {
@@ -18,7 +19,7 @@ function withTimeout(promise, ms) {
 
 async function tmdbFetch(pathname, apiKey, params = {}) {
   if (!apiKey) {
-    const err = new Error('TMDB API key non configurata (config.json > tmdbApiKey)');
+    const err = new AppError('srv.tmdbNoKey');
     err.status = 400;
     throw err;
   }
@@ -33,14 +34,14 @@ async function tmdbFetch(pathname, apiKey, params = {}) {
     res = await fetch(url, { signal: controller.signal });
   } catch (e) {
     clearTimeout(timer);
-    const err = new Error(`Impossibile contattare TMDB: ${e.message}`);
+    const err = new AppError('srv.tmdbUnreachable', { msg: e.message });
     err.status = 502;
     throw err;
   }
   clearTimeout(timer);
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    const err = new Error(`TMDB ha risposto ${res.status}: ${body.slice(0, 200)}`);
+    const err = new AppError(res.status === 401 ? 'srv.tmdbBadKey' : 'srv.tmdbStatus', { status: res.status });
     err.status = res.status === 401 ? 401 : 502;
     throw err;
   }

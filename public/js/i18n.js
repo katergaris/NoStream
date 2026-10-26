@@ -5,7 +5,7 @@
 
 const I18N = {
   // Le lingue disponibili compaiono nelle impostazioni; per aggiungerne una basta il file JSON.
-  available: { it: 'Italiano' },
+  available: { it: 'Italiano', en: 'English', es: 'Español', fr: 'Français', de: 'Deutsch' },
   fallback: 'it',
   lang: 'it',
   strings: {},

@@ -59,7 +59,7 @@ cp "$CACHE/yt-dlp.exe" "$OUT/app/bin/"
 )
 
 # 6. Istruzioni
-cp "$ROOT/packaging/windows/LEGGIMI.txt" "$OUT/LEGGIMI.txt"
+cp "$ROOT/packaging/windows/LEGGIMI.txt" "$ROOT/packaging/windows/README.txt" "$OUT/"
 
 # 7. Zip
 rm -f "$ZIP"

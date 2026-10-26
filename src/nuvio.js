@@ -12,6 +12,7 @@
 const crypto = require('crypto');
 const config = require('./config');
 const plugins = require('./plugins');
+const { AppError, saveError, errorText } = require('./i18n');
 
 // NUVIO_BACKEND serve per le prove o per un backend Nuvio self-hosted.
 const DEFAULT_BACKEND = process.env.NUVIO_BACKEND || 'https://api.nuvio.tv';
@@ -33,9 +34,9 @@ function saveState(patch) {
 
 async function discover(backendUrl) {
   const res = await fetch(`${backendUrl}/.well-known/nuvio`, { signal: AbortSignal.timeout(10000) });
-  if (!res.ok) throw new Error(`Nuvio non raggiungibile (HTTP ${res.status})`);
+  if (!res.ok) throw new AppError('srv.nuvioUnreachable', { status: res.status });
   const d = await res.json();
-  if (!d.publishable_key) throw new Error('Risposta di Nuvio inattesa');
+  if (!d.publishable_key) throw new AppError('srv.nuvioBadResponse');
   return { backendUrl: d.backend_url || backendUrl, key: d.publishable_key };
 }
 
@@ -49,7 +50,7 @@ async function authRequest(backendUrl, key, grant, body) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const msg = data.error_description || data.msg || data.error || `HTTP ${res.status}`;
-    const e = new Error(/invalid login|invalid_grant|credentials/i.test(msg) ? 'Email o password non corrette' : msg);
+    const e = /invalid login|invalid_grant|credentials/i.test(msg) ? new AppError('srv.nuvioBadLogin') : new Error(msg);
     e.auth = true;
     throw e;
   }
@@ -64,7 +65,7 @@ function remember(data) {
 async function login(email, password) {
   const { backendUrl, key } = await discover(DEFAULT_BACKEND);
   const data = await authRequest(backendUrl, key, 'password', { email: String(email).trim(), password: String(password) });
-  saveState({ backendUrl, key, connectedAt: Date.now(), profileId: 1, excluded: [], error: null });
+  saveState({ backendUrl, key, connectedAt: Date.now(), profileId: 1, excluded: [], ...saveError(null) });
   remember(data);
   await sync();
   return status();
@@ -73,14 +74,14 @@ async function login(email, password) {
 async function accessToken() {
   if (session && session.expiresAt > Date.now()) return session.accessToken;
   const s = state();
-  if (!s || !s.refreshToken) throw new Error('Account Nuvio non collegato');
+  if (!s || !s.refreshToken) throw new AppError('srv.nuvioNotConnected');
   try {
     const data = await authRequest(s.backendUrl, s.key, 'refresh_token', { refresh_token: s.refreshToken });
     remember(data);
   } catch (e) {
     if (e.auth) {
       // Sessione scaduta o revocata (es. cambio password): serve un nuovo login.
-      saveState({ refreshToken: null, error: 'Sessione Nuvio scaduta: collega di nuovo l\'account' });
+      saveState({ refreshToken: null, ...saveError(new AppError('srv.nuvioExpired')) });
       session = null;
     }
     throw e;
@@ -97,7 +98,7 @@ async function rest(pathAndQuery, { method = 'GET', body } = {}) {
     body: body ? JSON.stringify(body) : undefined,
     signal: AbortSignal.timeout(15000)
   });
-  if (!res.ok) throw new Error(`Nuvio: HTTP ${res.status}`);
+  if (!res.ok) throw new AppError('srv.nuvioHttp', { status: res.status });
   return res.json();
 }
 
@@ -135,7 +136,7 @@ function sync() {
   if (syncing) return syncing;
   syncing = (async () => {
     const s = state();
-    if (!s || !s.refreshToken) throw new Error('Account Nuvio non collegato');
+    if (!s || !s.refreshToken) throw new AppError('srv.nuvioNotConnected');
 
     const profiles = await rest('rpc/sync_pull_profiles', { method: 'POST', body: {} }).catch(() => []);
     const profileId = s.profileId || 1;
@@ -181,19 +182,19 @@ function sync() {
       report,
       pluginReport,
       lastSync: Date.now(),
-      error: null
+      ...saveError(null)
     };
     config.save(cfg);
     console.log(`[nuvio] sincronizzati ${rows.length} addon (profilo ${profileId}), ${fromNuvio.length} usati come fonti; ${pluginReport.reduce((n, r) => n + r.scrapers.length, 0)} plugin in ${pluginReport.length} repository`);
     return status();
   })().catch(e => {
-    saveState({ error: e.message });
+    saveState(saveError(e));
     throw e;
   }).finally(() => { syncing = null; });
   return syncing;
 }
 
-function status() {
+function status(lang = 'it') {
   const s = state();
   if (!s || (!s.refreshToken && !s.error)) return { connected: false };
   const excluded = new Set(s.excluded || []);
@@ -203,7 +204,7 @@ function status() {
     profileId: s.profileId || 1,
     profiles: s.profiles || [],
     lastSync: s.lastSync || null,
-    error: s.error || null,
+    error: errorText(s, lang),
     // Gli URL possono contenere chiavi personali: all'interfaccia va solo il dominio.
     addons: (s.report || []).map(r => ({
       id: r.id,
@@ -260,7 +261,7 @@ function setPluginUsed(key, used) {
 
 async function setProfile(profileId) {
   const n = parseInt(profileId, 10);
-  if (!(n >= 1 && n <= 6)) throw new Error('Profilo non valido');
+  if (!(n >= 1 && n <= 6)) throw new AppError('srv.badProfile');
   saveState({ profileId: n });
   return sync();
 }
