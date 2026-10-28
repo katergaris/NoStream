@@ -192,6 +192,11 @@ risolve lato server per MixDrop (`gx`), StreamingCommunity/vixsrc (`css`), Altad
   dice il motivo.
 - Rilegge l'elenco ogni 6 ore: un addon aggiunto in Nuvio compare qui da solo.
 - Puoi spegnere ogni addon che non vuoi usare.
+- **Usa anche gli addon/plugin disattivati in Nuvio** (due opzioni separate): NoStream
+  continua a usarli anche se nell'app sono disattivati. Così in Nuvio puoi lasciare attivo
+  solo NoStream (un link verificato per risoluzione) mentre NoStream interroga tutte le
+  fonti dietro le quinte. Vanno disattivati, non disinstallati: un addon disinstallato
+  sparisce dall'account.
 
 La password non viene salvata: NoStream conserva solo un gettone di accesso, che si
 revoca scollegando l'account. NoStream **non scrive mai** nel tuo account Nuvio.
@@ -298,7 +303,7 @@ Tutto si cambia dalle **Impostazioni**; il `config.json` lo scrive NoStream.
 | `addonTimeoutMs` | `60000` | Attesa massima per ogni addon/plugin; più basso = lista più veloce |
 | `addons` | `[]` | Fonti (`name`, `manifestUrl`; `origin: "nuvio"` per quelle del tuo account) |
 | `ytdlp` | | `maxHeight`, `audioFormat`, `embedSubs`, `numberFiles`, `autoUpdate` |
-| `nuvio` | | Accesso a Nuvio (gettone, profilo, addon esclusi, plugin). Da tenere privato |
+| `nuvio` | | Accesso a Nuvio (gettone, profilo, addon esclusi, plugin, `useDisabledAddons`, `useDisabledPlugins`). Da tenere privato e da non copiare su un secondo NoStream: il gettone si rinnova a ogni uso, quindi due server che lo condividono si scollegano a vicenda |
 
 La **lingua dell'interfaccia** e le **preferenze di download** si salvano per dispositivo,
 nel browser.

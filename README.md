@@ -191,6 +191,11 @@ providers are hidden.
 - It re-reads the list every 6 hours, so an addon you add in Nuvio shows up here by
   itself.
 - You can switch off any addon you don't want to use.
+- **Also use addons/plugins disabled in Nuvio** (two separate options): NoStream keeps
+  using them even if they're disabled in the app. This way you can leave only NoStream
+  enabled in Nuvio (one verified link per resolution) while NoStream queries every source
+  behind the scenes. Disable them, don't uninstall them: an uninstalled addon disappears
+  from the account.
 
 The password is not stored: NoStream keeps only an access token, and disconnecting the
 account revokes it. NoStream **never writes** to your Nuvio account.
@@ -294,7 +299,7 @@ Everything can be changed from **Settings**; `config.json` is written for you.
 | `addonTimeoutMs` | `60000` | Max wait for each addon/plugin; lower = faster source list |
 | `addons` | `[]` | Sources (`name`, `manifestUrl`; `origin: "nuvio"` for those from your account) |
 | `ytdlp` | | `maxHeight`, `audioFormat`, `embedSubs`, `numberFiles`, `autoUpdate` |
-| `nuvio` | | Nuvio sign-in (token, profile, excluded addons, plugin settings). Keep it private |
+| `nuvio` | | Nuvio sign-in (token, profile, excluded addons, plugin settings, `useDisabledAddons`, `useDisabledPlugins`). Keep it private, and don't copy it to a second NoStream: the token is renewed on every use, so two servers sharing it would sign each other out |
 
 The **interface language** and the **download preferences** are stored per device, in the
 browser.
