@@ -47,9 +47,17 @@ function binPath() {
   return process.env.YTDLP_PATH || 'yt-dlp';
 }
 
+// Pensati per linee che perdono connessioni (es. 5G): attese più lunghe e più tentativi.
 function baseArgs() {
-  return ['--js-runtimes', `node:${process.execPath}`, '--no-warnings', '--ignore-config'];
+  return ['--js-runtimes', `node:${process.execPath}`, '--no-warnings', '--ignore-config',
+    '--socket-timeout', '30', '--extractor-retries', '5'];
 }
+
+const DOWNLOAD_NET_ARGS = [
+  '--retries', '15', '--fragment-retries', '30',
+  '--retry-sleep', 'http:exp=1:20', '--retry-sleep', 'fragment:exp=1:20',
+  '--concurrent-fragments', '4'
+];
 
 // Esegue yt-dlp e raccoglie l'output. onLine riceve ogni riga di stdout mentre arriva.
 function run(args, { timeoutMs = 0, onLine } = {}) {
@@ -287,6 +295,7 @@ async function start(job) {
   let finalFile = null;
   const args = [
     ...formatArgs(job),
+    ...DOWNLOAD_NET_ARGS,
     '--no-playlist', '--newline', '--no-mtime',
     '--progress-template', 'download:NSPROG %(progress.downloaded_bytes)s %(progress.total_bytes)s %(progress.total_bytes_estimate)s',
     '--print', 'after_move:NSFILE %(filepath)s',
