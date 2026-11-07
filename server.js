@@ -1,13 +1,8 @@
 const express = require('express');
 const path = require('path');
-const dns = require('dns');
-const net = require('net');
-
-// Con IPv6 non raggiungibile Node prova ogni indirizzo per soli 250 ms: se gli IPv4
-// rispondono più lenti (es. TMDB su CloudFront) fetch fallisce a caso con "fetch failed".
-// Si provano prima gli IPv4 e si concede più tempo a ogni tentativo.
-dns.setDefaultResultOrder('ipv4first');
-net.setDefaultAutoSelectFamilyAttemptTimeout(3000);
+// Prima IPv4, 3 s per indirizzo e nuovi tentativi se una connessione non si apre:
+// senza, sulle linee che perdono pacchetti fetch fallisce a caso con "fetch failed".
+require('./src/plugin-runner/net-retry');
 
 const config = require('./src/config');
 const addons = require('./src/addons');
@@ -43,7 +38,7 @@ function preparedFilename(p) {
   return `${streamer.sanitizeFilename(p.title || p.streamTitle || 'download')}${ext}`;
 }
 
-const APP_VERSION = '2.0.3';
+const APP_VERSION = '2.0.4';
 
 const app = express();
 app.set('etag', false);

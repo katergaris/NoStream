@@ -9,6 +9,7 @@
 // SCRAPER_SETTINGS e TMDB_API_KEY, e require() solo per cheerio e crypto-js.
 // Ogni plugin ha un contesto vm suo, così i plugin non si vedono tra loro.
 
+require('./net-retry');  // anche i plugin riprovano le connessioni che non si aprono
 const vm = require('vm');
 const cheerio = require('cheerio');
 const CryptoJS = require('crypto-js');
