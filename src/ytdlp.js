@@ -296,7 +296,8 @@ async function start(job) {
   const args = [
     ...formatArgs(job),
     ...DOWNLOAD_NET_ARGS,
-    '--no-playlist', '--newline', '--no-mtime',
+    // --print implica --quiet, che nasconde l'avanzamento: --progress lo rimette.
+    '--no-playlist', '--newline', '--no-mtime', '--progress',
     '--progress-template', 'download:NSPROG %(progress.downloaded_bytes)s %(progress.total_bytes)s %(progress.total_bytes_estimate)s',
     '--print', 'after_move:NSFILE %(filepath)s',
     '-o', path.join(DIR, `${job.key}.%(ext)s`),
