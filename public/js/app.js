@@ -72,7 +72,11 @@ async function api(path, options = {}) {
   const res = await fetch('/api' + path, { headers: { 'Content-Type': 'application/json', 'X-NoStream-Lang': I18N.lang }, ...options });
   let data = null;
   try { data = await res.json(); } catch {}
-  if (!res.ok) throw new Error((data && data.error) || t('error.http', { status: res.status }));
+  if (!res.ok) {
+    const err = new Error((data && data.error) || t('error.http', { status: res.status }));
+    err.status = res.status;
+    throw err;
+  }
   return data;
 }
 
@@ -1184,6 +1188,25 @@ async function startLinkItem(item) {
   refreshServerFiles();
 }
 
+// Con una linea instabile una ricerca può fallire, o non trovare nulla perché le fonti non
+// hanno risposto: prima di dare errore si riprova, a distanza. Gli errori definitivi
+// (chiave TMDB, nessun addon, titolo sconosciuto) non cambiano riprovando.
+const SEARCH_RETRY_DELAYS_MS = [20000, 40000];
+
+async function searchWithRetries(item) {
+  for (let attempt = 0; ; attempt++) {
+    const last = attempt >= SEARCH_RETRY_DELAYS_MS.length;
+    try {
+      const data = await fetchStreams(item.tmdbId, item.type, item.season, item.episode);
+      if (last || data.streams.some(s => s.supported) || !(data.errors || []).length) return data;
+    } catch (err) {
+      if (last || (err.status && err.status < 500)) throw err;
+    }
+    await new Promise(r => setTimeout(r, SEARCH_RETRY_DELAYS_MS[attempt]));
+    if (!queue.items.includes(item)) return { streams: [] };
+  }
+}
+
 async function startItem(item) {
   if (item.type === 'link') return startLinkItem(item);
   item.status = 'resolving';
@@ -1193,7 +1216,7 @@ async function startItem(item) {
 
   let candidates;
   try {
-    const data = await fetchStreams(item.tmdbId, item.type, item.season, item.episode);
+    const data = await searchWithRetries(item);
     candidates = sortByPrefs(data.streams.filter(s => s.supported));
   } catch (err) {
     failItem(item, t('queue.searchFailed', { msg: err.message }));

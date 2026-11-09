@@ -95,4 +95,14 @@ function updateSettings({ tmdbApiKey, language, concurrentDownloads, addonTimeou
   return cfg;
 }
 
-module.exports = { get, save, listAddons, addAddon, removeAddon, updateSettings, CONFIG_PATH };
+// Indirizzi che dal server non si raggiungono così come li danno le fonti (es. nomi *.ts.net
+// su una macchina fuori dalla tailnet): config.json -> urlRewrites: [{ from, to }], per prefisso.
+function localUrl(url) {
+  if (typeof url !== 'string') return url;
+  for (const r of load().urlRewrites || []) {
+    if (r && r.from && r.to && url.startsWith(r.from)) return r.to + url.slice(r.from.length);
+  }
+  return url;
+}
+
+module.exports = { get, save, localUrl, listAddons, addAddon, removeAddon, updateSettings, CONFIG_PATH };

@@ -189,7 +189,7 @@ async function getStreams(tmdbId, mediaType, season, episode, timeoutMs, { anima
           addonName: `${name} (plugin)`,
           name: s.name || name,
           title: [s.title || s.name || 'Stream', s.quality, s.size].filter(Boolean).join(' · '),
-          url,
+          url: config.localUrl(url),
           externalUrl: null,
           infoHash: null,
           headers: s.headers && typeof s.headers === 'object' ? s.headers : null,

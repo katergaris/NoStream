@@ -38,7 +38,7 @@ function preparedFilename(p) {
   return `${streamer.sanitizeFilename(p.title || p.streamTitle || 'download')}${ext}`;
 }
 
-const APP_VERSION = '2.0.4';
+const APP_VERSION = '2.0.5';
 
 const app = express();
 app.set('etag', false);
