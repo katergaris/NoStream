@@ -290,6 +290,8 @@ header.
 
 Everything can be changed from **Settings**; `config.json` is written for you.
 
+If a source gives links this server cannot reach as written (for example a proxy on a `*.ts.net` name, on a machine outside the tailnet), add to `config.json`, with NoStream stopped: `"urlRewrites": [{ "from": "https://proxy.example.ts.net:", "to": "http://192.0.2.10:" }]`. Each `from` is a URL prefix.
+
 | Field | Default | Description |
 |---|---|---|
 | `tmdbApiKey` | `""` | TMDB v3 API key |

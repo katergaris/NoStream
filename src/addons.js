@@ -79,9 +79,17 @@ async function isAnimation(tmdbId, type, apiKey) {
   return result;
 }
 
+// Gli stessi dati servono a ogni episodio: una stagione in coda non deve richiederli ogni
+// volta (con una linea che perde pacchetti ogni richiesta può fallire). Solo i successi.
+const imdbCache = new Map();
 async function getImdbId(tmdbId, type, apiKey) {
+  const key = `${type}:${tmdbId}`;
+  if (imdbCache.has(key)) return imdbCache.get(key);
   const data = await tmdbFetch(`/${type}/${tmdbId}/external_ids`, apiKey);
-  return data.imdb_id || null;
+  const result = data.imdb_id || null;
+  if (imdbCache.size > 2000) imdbCache.clear();
+  imdbCache.set(key, result);
+  return result;
 }
 
 async function getSeasons(tmdbId, apiKey, language) {
@@ -112,17 +120,23 @@ function buildStremioId(imdbId, mediaType, season, episode) {
   return imdbId;
 }
 
+const findCache = new Map();
 async function findByImdbId(imdbId, mediaType, apiKey, language) {
+  const key = `${mediaType}:${imdbId}:${language}`;
+  if (findCache.has(key)) return findCache.get(key);
   const data = await tmdbFetch(`/find/${imdbId}`, apiKey, { external_source: 'imdb_id', language });
   const results = mediaType === 'series' ? data.tv_results : data.movie_results;
   if (!results || !results.length) return null;
   const r = results[0];
-  return {
+  const result = {
     tmdbId: r.id,
     animation: (r.genre_ids || []).includes(16),
     title: r.title || r.name || null,
     year: (r.release_date || r.first_air_date || '').slice(0, 4) || null
   };
+  if (findCache.size > 2000) findCache.clear();
+  findCache.set(key, result);
+  return result;
 }
 
 function addonBaseUrl(manifestUrl) {
@@ -157,7 +171,7 @@ async function queryAddonStreams(addon, stremioType, stremioId) {
       addonName: addon.name,
       name: s.name || null,
       title: s.title || s.description || s.name || 'Stream',
-      url: s.url || null,
+      url: config.localUrl(s.url) || null,
       externalUrl: s.externalUrl || null,
       infoHash: s.infoHash || null,
       headers: (s.behaviorHints && s.behaviorHints.proxyHeaders && s.behaviorHints.proxyHeaders.request) || null,
