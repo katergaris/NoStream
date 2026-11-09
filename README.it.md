@@ -294,6 +294,8 @@ questo header.
 
 Tutto si cambia dalle **Impostazioni**; il `config.json` lo scrive NoStream.
 
+Se una fonte dà link che questo server non raggiunge così come sono (per esempio un proxy su un nome `*.ts.net`, su una macchina fuori dalla tailnet), aggiungi a `config.json`, con NoStream fermo: `"urlRewrites": [{ "from": "https://proxy.example.ts.net:", "to": "http://192.0.2.10:" }]`. Ogni `from` è un prefisso dell'URL.
+
 | Campo | Default | Descrizione |
 |---|---|---|
 | `tmdbApiKey` | `""` | API key v3 di TMDB |
