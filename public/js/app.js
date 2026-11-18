@@ -168,6 +168,8 @@ function sortByPrefs(streams) {
   const wantQ = prefs.quality === 'any' ? null : Number(prefs.quality);
   const score = s => {
     let v = 0;
+    // Fonti preferite (scelte sul server): prima di tutto il resto, nell'ordine scelto
+    if (s.preferredRank !== undefined) v += 100000 - s.preferredRank * 10000;
     if (prefs.audio !== 'any' && streamLangs(s).includes(prefs.audio)) v += 4000;
     if (prefs.directFirst && s.kind === 'direct') v += 2000;
     const q = streamQuality(s);
@@ -206,7 +208,8 @@ const state = {
   link: storageGet('nostream.link'),  // video o playlist aperta da link (yt-dlp)
   linkMode: 'video',   // video | audio
   settings: null,      // impostazioni del server (/api/settings)
-  addons: null
+  addons: null,
+  dlSources: null      // fonti preferite per il download (/api/download-sources)
 };
 
 const ROUTES = {
@@ -220,6 +223,7 @@ const ROUTES = {
   '#impostazioni/avanzate': 'settings',
   '#impostazioni/link': 'settings',
   '#impostazioni/account-nuvio': 'settings',
+  '#impostazioni/fonti-download': 'settings',
   '#link': 'link',
   '#benvenuto': 'welcome'
 };
@@ -1635,6 +1639,7 @@ async function loadNuvio() {
 async function loadAddons() {
   const { addons } = await api('/addons');
   state.addons = addons;
+  state.dlSources = null;
   return addons;
 }
 
@@ -1642,6 +1647,7 @@ function renderSettings(page) {
   const view = $('#view-settings');
   view.innerHTML = '';
   if (page === 'addon') return renderAddonsPage(view);
+  if (page === 'fonti-download') return renderDownloadSourcesPage(view);
   if (page === 'nuvio') return renderNuvioPage(view);
   if (page === 'tmdb') return renderTmdbPage(view);
   if (page === 'avanzate') return renderAdvancedPage(view);
@@ -1666,6 +1672,8 @@ function renderSettings(page) {
   const n = state.addons ? state.addons.filter(a => !a.disabled).length : null;
   view.appendChild(el('div', { class: 'group' }, [
     linkRow(t('settings.addons'), n === null ? '' : el('span', { class: n ? 'chip ok' : 'chip warn' }, t('settings.addonsCount', { n })), '#impostazioni/addon'),
+    linkRow(t('dlsrc.title'), !state.dlSources ? '' : !state.dlSources.preferred.length ? t('dlsrc.all')
+      : el('span', { class: 'chip acc' }, t(state.dlSources.only ? 'dlsrc.onlyCount' : 'dlsrc.prefCount', { n: state.dlSources.preferred.length })), '#impostazioni/fonti-download'),
     linkRow(t('settings.nuvioAccount'), state.nuvio && state.nuvio.connected
       ? el('span', { class: 'chip ok' }, t('nuvioAcc.connectedChip'))
       : state.nuvio && state.nuvio.error ? el('span', { class: 'chip err' }, t('nuvioAcc.errorChip')) : t('nuvioAcc.notConnected'), '#impostazioni/account-nuvio'),
@@ -1685,8 +1693,8 @@ function renderSettings(page) {
 
   view.appendChild(el('p', { class: 'version-line' }, `NoStream ${s.version ? 'v' + s.version : ''}`));
 
-  if (!state.settings || !state.addons || !state.nuvio) {
-    Promise.all([loadServerSettings(), loadAddons(), loadNuvio()]).then(() => { if (location.hash === '#impostazioni') rerender(); }).catch(err => toast(err.message, true));
+  if (!state.settings || !state.addons || !state.nuvio || !state.dlSources) {
+    Promise.all([loadServerSettings(), loadAddons().then(loadDlSources), loadNuvio()]).then(() => { if (location.hash === '#impostazioni') rerender(); }).catch(err => toast(err.message, true));
   }
 }
 
@@ -1741,6 +1749,7 @@ async function fillAddonList(list, after) {
         a.disabled = !enabled;
         row.classList.toggle('off', !enabled);
         state.streamCache.clear();
+        state.dlSources = null;
         toast(t(enabled ? 'addons.enabled' : 'addons.disabled', { name: a.name }));
       } catch (err) { e.target.checked = !enabled; toast(err.message, true); }
     } });
@@ -1771,6 +1780,69 @@ async function fillAddonList(list, after) {
   }
 }
 
+// ---- Fonti preferite per il download
+
+async function loadDlSources() {
+  state.dlSources = await api('/download-sources');
+  return state.dlSources;
+}
+
+async function saveDlSources(body) {
+  try {
+    state.dlSources = await api('/download-sources', { method: 'POST', body: JSON.stringify(body) });
+    state.streamCache.clear();
+  } catch (err) { toast(err.message, true); }
+  renderSettings('fonti-download');
+}
+
+function renderDownloadSourcesPage(view) {
+  view.appendChild(subAppbar(t('dlsrc.title')));
+  const d = state.dlSources;
+  if (!d) {
+    loadDlSources().then(() => { if (location.hash === '#impostazioni/fonti-download') renderSettings('fonti-download'); }).catch(err => toast(err.message, true));
+    return;
+  }
+  const ids = d.preferred.map(p => p.id);
+  const kindChip = kind => el('span', { class: 'chip', style: 'margin-left:6px' }, t(kind === 'plugin' ? 'dlsrc.plugin' : 'dlsrc.addon'));
+  const kindOf = id => (id.startsWith('plugin:') ? 'plugin' : 'addon');
+
+  const onlyRow = switchRow(t('dlsrc.only'), d.only, v => saveDlSources({ only: v }));
+  if (!ids.length) onlyRow.querySelector('input').disabled = true;
+  view.appendChild(el('div', { class: 'group' }, onlyRow));
+
+  view.appendChild(el('div', { class: 'sec' }, t('dlsrc.preferred')));
+  if (!d.preferred.length) {
+    view.appendChild(el('div', { class: 'meta', style: 'margin:0 4px' }, t('dlsrc.none')));
+  } else {
+    const group = el('div', { class: 'group' });
+    d.preferred.forEach((p, i) => {
+      const move = () => { const next = ids.slice(); [next[i - 1], next[i]] = [next[i], next[i - 1]]; saveDlSources({ preferred: next }); };
+      group.appendChild(el('div', { class: 'set' + (p.available ? '' : ' off') }, [
+        el('span', { style: 'min-width:0' }, [`${i + 1}. ${p.name}`, kindChip(kindOf(p.id)),
+          p.available ? null : el('span', { class: 'chip warn', style: 'margin-left:6px' }, t('dlsrc.inactive'))]),
+        el('span', { class: 'v', style: 'flex:none' }, [
+          i > 0 ? el('button', { class: 'icon-btn', type: 'button', 'aria-label': t('dlsrc.moveUp', { name: p.name }), onclick: move }, icon('up')) : null,
+          el('button', { class: 'icon-btn', type: 'button', 'aria-label': t('dlsrc.remove', { name: p.name }), onclick: () => saveDlSources({ preferred: ids.filter(x => x !== p.id) }) }, icon('x'))
+        ])
+      ]));
+    });
+    view.appendChild(group);
+  }
+
+  const others = d.sources.filter(x => !ids.includes(x.id));
+  if (others.length) {
+    view.appendChild(el('div', { class: 'sec' }, t(d.only ? 'dlsrc.othersExcluded' : 'dlsrc.others')));
+    const group = el('div', { class: 'group' + (d.only ? ' dimmed' : '') });
+    for (const x of others) {
+      group.appendChild(el('div', { class: 'set' }, [
+        el('span', { style: 'min-width:0' }, [x.name, kindChip(x.kind)]),
+        el('button', { class: 'icon-btn', type: 'button', 'aria-label': t('dlsrc.add', { name: x.name }), onclick: () => saveDlSources({ preferred: [...ids, x.id] }) }, icon('plus'))
+      ]));
+    }
+    view.appendChild(group);
+  }
+}
+
 // ---- Account Nuvio (gli addon di Nuvio come fonti)
 
 function hostOf(url) { try { return new URL(url).hostname; } catch { return url; } }
@@ -1794,7 +1866,7 @@ function renderNuvioAccountPage(view) {
     loadNuvio().then(() => renderSettings('account-nuvio')).catch(err => toast(err.message, true));
     return;
   }
-  const rerender = data => { state.nuvio = data; state.addons = null; renderSettings('account-nuvio'); };
+  const rerender = data => { state.nuvio = data; state.addons = null; state.dlSources = null; renderSettings('account-nuvio'); };
 
   if (!n.connected) {
     view.appendChild(el('p', { class: 'lead' }, t('nuvioAcc.lead')));

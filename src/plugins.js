@@ -166,8 +166,8 @@ function active() {
 function animationOnly(name) { return /anime|toon|cartoon|hentai|donghua/i.test(name || ''); }
 
 // Stream dei plugin attivi per un titolo, già nel formato degli stream degli addon.
-async function getStreams(tmdbId, mediaType, season, episode, timeoutMs, { animation = false } = {}) {
-  const keys = active().filter(k => (code.get(k).types || []).includes(mediaType) && (animation || !animationOnly(code.get(k).name)));
+async function getStreams(tmdbId, mediaType, season, episode, timeoutMs, { animation = false, only = null } = {}) {
+  const keys = active().filter(k => !only || only.has(k)).filter(k => (code.get(k).types || []).includes(mediaType) && (animation || !animationOnly(code.get(k).name)));
   if (!keys.length || !tmdbId) return { streams: [], errors: [] };
   const args = { tmdbId, mediaType, season: season ?? null, episode: episode ?? null };
   const streams = [];
@@ -205,8 +205,13 @@ async function getStreams(tmdbId, mediaType, season, episode, timeoutMs, { anima
   return { streams, errors };
 }
 
+// Plugin attivi (nome e id come negli stream), per la scelta delle fonti preferite.
+function listActive() {
+  return active().map(k => ({ id: `plugin:${k}`, name: `${code.get(k).name} (plugin)` }));
+}
+
 function statsFor(key) { return stats.get(key) || null; }
 
 function hasCode(key) { return code.has(key); }
 
-module.exports = { refresh, getStreams, statsFor, hasCode, settings, animationOnly };
+module.exports = { refresh, listActive, getStreams, statsFor, hasCode, settings, animationOnly };

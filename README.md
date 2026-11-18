@@ -40,7 +40,7 @@ PC as a portable app** (unzip and double-click, nothing to install). You use it:
 - [Features](#features)
 - [Install](#install): [Docker](#docker) · [Docker Compose](#docker-compose) · [CasaOS / ZimaOS](#casaos--zimaos) · [Windows portable](#windows-portable) · [From source](#from-source)
 - [First run](#first-run)
-- [Sources](#sources): [addons](#stremio-addons) · [Nuvio account](#your-nuvio-account) · [Nuvio plugins](#nuvio-plugins) · [video links](#videos-from-links-youtube-and-more)
+- [Sources](#sources): [addons](#stremio-addons) · [Nuvio account](#your-nuvio-account) · [Nuvio plugins](#nuvio-plugins) · [download sources](#download-sources) · [video links](#videos-from-links-youtube-and-more)
 - [Downloading](#downloading)
 - [Using it inside Nuvio](#using-it-inside-nuvio)
 - [Reaching it from outside home](#reaching-it-from-outside-home)
@@ -217,6 +217,13 @@ Plugins are third-party code, so NoStream runs them in a **separate locked-down 
 Each plugin has its own switch and shows the result of its last search. Plugins for
 anime/cartoons are used only for titles that TMDB lists as animation, because on other
 titles they tend to match the wrong video.
+
+### Download sources
+
+In **Settings → Download sources** pick one or more preferred sources among the active
+addons and plugins. Preferred sources come before all the others, in the order you set with
+the arrow, both in the web app and in the ⬇️ Download addon for Nuvio. With **Preferred
+only** NoStream queries and offers only those. The ▶ Streaming addon ignores this setting.
 
 ### Videos from links (YouTube and more)
 

@@ -431,5 +431,26 @@
   "nuvioAcc.useDisabledHint": "So kannst du in Nuvio nur NoStream aktiviert lassen: Die Quellen fragt NoStream ab. Nicht deinstallieren, nur deaktivieren.",
   "nuvioAcc.disabledButUsed": "in Nuvio deaktiviert, von NoStream genutzt",
   "plugins.useDisabled": "Auch in Nuvio deaktivierte Plugins nutzen",
-  "plugins.useDisabledHint": "Gilt für Plugin-Repositorys, die in der App deaktiviert sind"
+  "plugins.useDisabledHint": "Gilt für Plugin-Repositorys, die in der App deaktiviert sind",
+  "dlsrc.title": "Download-Quellen",
+  "dlsrc.all": "Alle",
+  "dlsrc.prefCount": {
+    "one": "1 bevorzugt",
+    "other": "{n} bevorzugt"
+  },
+  "dlsrc.onlyCount": {
+    "one": "Nur 1",
+    "other": "Nur {n}"
+  },
+  "dlsrc.only": "Nur bevorzugte",
+  "dlsrc.preferred": "Bevorzugt",
+  "dlsrc.none": "Keine",
+  "dlsrc.others": "Weitere Quellen",
+  "dlsrc.othersExcluded": "Ausgeschlossen",
+  "dlsrc.addon": "Addon",
+  "dlsrc.plugin": "Plugin",
+  "dlsrc.inactive": "inaktiv",
+  "dlsrc.add": "{name} zu bevorzugten hinzufügen",
+  "dlsrc.remove": "{name} aus bevorzugten entfernen",
+  "dlsrc.moveUp": "{name} nach oben"
 }

@@ -63,6 +63,29 @@ function setAddonEnabled(id, enabled) {
   return addon;
 }
 
+// Fonti preferite per il download: id degli addon o "plugin:<chiave>", nell'ordine di
+// priorità. Con only: true si usano solo queste (le altre non vengono nemmeno interrogate).
+function downloadSources() {
+  const d = load().downloadSources || {};
+  const preferred = Array.isArray(d.preferred) ? d.preferred.filter(x => x && x.id) : [];
+  return { preferred, only: !!d.only && preferred.length > 0 };
+}
+
+function setDownloadSources({ preferred, only }) {
+  const cfg = load();
+  const current = downloadSources();
+  const next = {
+    preferred: Array.isArray(preferred)
+      ? preferred.filter(x => x && typeof x.id === 'string').map(x => ({ id: x.id, name: String(x.name || x.id) }))
+      : current.preferred,
+    only: only === undefined ? current.only : !!only
+  };
+  if (!next.preferred.length) next.only = false;
+  cfg.downloadSources = next;
+  save(cfg);
+  return downloadSources();
+}
+
 function addAddon({ name, manifestUrl }) {
   const cfg = load();
   const addon = {
@@ -120,4 +143,4 @@ function localUrl(url) {
   return url;
 }
 
-module.exports = { get, save, localUrl, listAddons, activeAddons, setAddonEnabled, addAddon, removeAddon, updateSettings, CONFIG_PATH };
+module.exports = { downloadSources, setDownloadSources, get, save, localUrl, listAddons, activeAddons, setAddonEnabled, addAddon, removeAddon, updateSettings, CONFIG_PATH };

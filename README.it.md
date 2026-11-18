@@ -40,7 +40,7 @@ programma portable** (estrai lo zip e doppio clic, niente da installare). Lo usi
 - [Funzioni](#funzioni)
 - [Installazione](#installazione): [Docker](#docker) · [Docker Compose](#docker-compose) · [CasaOS / ZimaOS](#casaos--zimaos) · [Windows portable](#windows-portable) · [Da sorgente](#da-sorgente)
 - [Primo avvio](#primo-avvio)
-- [Fonti](#fonti): [addon](#addon-stremio) · [account Nuvio](#il-tuo-account-nuvio) · [plugin di Nuvio](#plugin-di-nuvio) · [video da link](#video-da-link-youtube-e-altri)
+- [Fonti](#fonti): [addon](#addon-stremio) · [account Nuvio](#il-tuo-account-nuvio) · [plugin di Nuvio](#plugin-di-nuvio) · [fonti per il download](#fonti-per-il-download) · [video da link](#video-da-link-youtube-e-altri)
 - [Scaricare](#scaricare)
 - [Usarlo dentro Nuvio](#usarlo-dentro-nuvio)
 - [Raggiungerlo fuori casa](#raggiungerlo-fuori-casa)
@@ -218,6 +218,13 @@ separato e chiuso** (permission model di Node.js):
 Ogni plugin ha il suo interruttore e mostra l'esito dell'ultima ricerca. I plugin per
 anime e cartoni si usano solo per i titoli che TMDB classifica come animazione: sugli altri
 tendono a trovare il video sbagliato.
+
+### Fonti per il download
+
+In **Impostazioni → Fonti per il download** scegli una o più fonti preferite tra gli addon e
+i plugin attivi. Le preferite vengono prima di tutte le altre, nell'ordine che dai con la
+freccia, sia nella web app sia nell'addon ⬇️ Download per Nuvio. Con **Solo le preferite**
+NoStream interroga e propone solo quelle. L'addon ▶ Streaming non ne tiene conto.
 
 ### Video da link (YouTube e altri)
 

@@ -431,5 +431,26 @@
   "nuvioAcc.useDisabledHint": "Ainsi, dans Nuvio, vous pouvez ne laisser actif que NoStream : c'est NoStream qui interroge les sources. Ne les désinstallez pas, désactivez-les seulement.",
   "nuvioAcc.disabledButUsed": "désactivé dans Nuvio, utilisé par NoStream",
   "plugins.useDisabled": "Utiliser aussi les plugins désactivés dans Nuvio",
-  "plugins.useDisabledHint": "S'applique aux dépôts de plugins désactivés dans l'app"
+  "plugins.useDisabledHint": "S'applique aux dépôts de plugins désactivés dans l'app",
+  "dlsrc.title": "Sources de téléchargement",
+  "dlsrc.all": "Toutes",
+  "dlsrc.prefCount": {
+    "one": "1 préférée",
+    "other": "{n} préférées"
+  },
+  "dlsrc.onlyCount": {
+    "one": "Seulement 1",
+    "other": "Seulement {n}"
+  },
+  "dlsrc.only": "Préférées uniquement",
+  "dlsrc.preferred": "Préférées",
+  "dlsrc.none": "Aucune",
+  "dlsrc.others": "Autres sources",
+  "dlsrc.othersExcluded": "Exclues",
+  "dlsrc.addon": "addon",
+  "dlsrc.plugin": "plugin",
+  "dlsrc.inactive": "inactive",
+  "dlsrc.add": "Ajouter {name} aux préférées",
+  "dlsrc.remove": "Retirer {name} des préférées",
+  "dlsrc.moveUp": "Monter {name}"
 }

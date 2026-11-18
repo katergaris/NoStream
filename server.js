@@ -38,7 +38,7 @@ function preparedFilename(p) {
   return `${streamer.sanitizeFilename(p.title || p.streamTitle || 'download')}${ext}`;
 }
 
-const APP_VERSION = '2.0.5';
+const APP_VERSION = '2.0.6';
 
 const app = express();
 app.set('etag', false);
@@ -83,6 +83,22 @@ app.get('/api/episodes/:tmdbId/:season', asyncRoute(async (req, res) => {
 
 // ---- Streams (Stremio addon protocol) ----
 
+// Fonti da interrogare per un download: tutte quelle attive o, con «solo le preferite»,
+// soltanto quelle scelte nella pagina Fonti per il download.
+function downloadSourceQuery() {
+  const { preferred, only } = config.downloadSources();
+  let addonList = config.activeAddons();
+  let pluginsOn = !!plugins.settings().enabled;
+  let pluginOnly = null;
+  if (only) {
+    const ids = new Set(preferred.map(p => p.id));
+    addonList = addonList.filter(a => ids.has(a.id));
+    pluginOnly = new Set([...ids].filter(id => id.startsWith('plugin:')).map(id => id.slice(7)));
+    if (!pluginOnly.size) pluginsOn = false;
+  }
+  return { addonList, pluginsOn, pluginOnly };
+}
+
 app.get('/api/streams', asyncRoute(async (req, res) => {
   const { tmdbId, type, season, episode } = req.query;
   if (!tmdbId || !type) {
@@ -99,8 +115,7 @@ app.get('/api/streams', asyncRoute(async (req, res) => {
   }
 
   const stremioId = addons.buildStremioId(imdbId, stremioType, season, episode);
-  const addonList = config.activeAddons();
-  const pluginsOn = !!plugins.settings().enabled;
+  const { addonList, pluginsOn, pluginOnly } = downloadSourceQuery();
   if (addonList.length === 0 && !pluginsOn) {
     return res.status(400).json({ error: req.t('srv.noAddons') });
   }
@@ -109,7 +124,7 @@ app.get('/api/streams', asyncRoute(async (req, res) => {
     addons.getStreamsForAllAddons(addonList, stremioType, stremioId),
     pluginsOn
       ? addons.isAnimation(tmdbId, type, cfg.tmdbApiKey).catch(() => false)
-        .then(animation => plugins.getStreams(tmdbId, type === 'tv' ? 'tv' : 'movie', season ? Number(season) : null, episode ? Number(episode) : null, cfg.addonTimeoutMs, { animation }))
+        .then(animation => plugins.getStreams(tmdbId, type === 'tv' ? 'tv' : 'movie', season ? Number(season) : null, episode ? Number(episode) : null, cfg.addonTimeoutMs, { animation, only: pluginOnly }))
       : { streams: [], errors: [] }
   ]);
   const streams = [...fromAddons.streams, ...fromPlugins.streams];
@@ -121,7 +136,7 @@ app.get('/api/streams', asyncRoute(async (req, res) => {
     const job = prepared.get(prepared.keyFor({ vid: stremioId, addonName: s.addonName, streamTitle: s.title }));
     if (job) s.prepared = prepared.publicView(job, req.lang);
   }
-  const unsupported = streams.filter(s => !s.supported);
+  const unsupported = config.downloadSources().only ? [] : streams.filter(s => !s.supported);
   res.json({ imdbId, stremioId, streams: [...ranked, ...unsupported], errors });
 }));
 
@@ -219,6 +234,36 @@ app.delete('/api/addons/:id', (req, res) => {
 });
 
 // ---- Download (streaming diretto verso il dispositivo, nessuno storage sul server) ----
+
+// ---- Fonti preferite per il download ----
+
+function downloadSourcesView() {
+  const sources = [
+    ...config.activeAddons().map(a => ({ id: a.id, name: a.name, kind: 'addon' })),
+    ...(plugins.settings().enabled ? plugins.listActive().map(p => ({ ...p, kind: 'plugin' })) : [])
+  ];
+  const known = new Set(sources.map(x => x.id));
+  const { preferred, only } = config.downloadSources();
+  return {
+    only,
+    preferred: preferred.map(p => ({ ...p, available: known.has(p.id) })),
+    sources
+  };
+}
+
+app.get('/api/download-sources', (req, res) => res.json(downloadSourcesView()));
+
+app.post('/api/download-sources', (req, res) => {
+  const body = req.body || {};
+  let preferred;
+  if (Array.isArray(body.preferred)) {
+    const names = new Map([...downloadSourcesView().sources, ...config.downloadSources().preferred].map(x => [x.id, x.name]));
+    preferred = [...new Set(body.preferred.filter(id => typeof id === 'string' && names.has(id)))]
+      .map(id => ({ id, name: names.get(id) }));
+  }
+  config.setDownloadSources({ preferred, only: body.only });
+  res.json(downloadSourcesView());
+});
 
 function decodeDownloadPayload(raw) {
   if (!raw) return {};
@@ -594,11 +639,21 @@ async function rankDownloadable(downloadable) {
     const existing = unique.get(key);
     if (existing) {
       if (!existing.addonNames.includes(s.addonName)) existing.addonNames.push(s.addonName);
+      if (!existing.addonIds.includes(s.addonId)) existing.addonIds.push(s.addonId);
     } else {
-      unique.set(key, { ...s, addonNames: [s.addonName], kind: streamKind(s) });
+      unique.set(key, { ...s, addonNames: [s.addonName], addonIds: [s.addonId], kind: streamKind(s) });
     }
   }
-  const entries = [...unique.values()];
+  // Fonti preferite (pagina Fonti per il download): davanti, nell'ordine scelto; con
+  // «solo le preferite» le altre si scartano.
+  const { preferred, only } = config.downloadSources();
+  const prefIndex = new Map(preferred.map((p, i) => [p.id, i]));
+  let entries = [...unique.values()];
+  for (const e of entries) {
+    const ranks = e.addonIds.map(id => prefIndex.get(id)).filter(i => i !== undefined);
+    if (ranks.length) e.preferredRank = Math.min(...ranks);
+  }
+  if (only) entries = entries.filter(e => e.preferredRank !== undefined);
 
   // Per i file diretti chiediamo subito la dimensione alla fonte: Nuvio la mostra come
   // badge (behaviorHints.videoSize) e conferma che il link è davvero scaricabile.
@@ -612,7 +667,8 @@ async function rankDownloadable(downloadable) {
   // (conversione al volo, senza dimensione). Tra i diretti, quelli con dimensione nota
   // davanti; l'ordine originale degli addon resta come criterio finale.
   const rank = e => (e.kind === 'direct' ? (e.size ? 0 : 1) : 2);
-  entries.sort((a, b) => rank(a) - rank(b));
+  const pref = e => (e.preferredRank === undefined ? preferred.length : e.preferredRank);
+  entries.sort((a, b) => pref(a) - pref(b) || rank(a) - rank(b));
   return entries;
 }
 
@@ -638,9 +694,10 @@ app.get('/manifest.json', addonCors, (req, res) => {
 
 // Fonti per un titolo richiesto da Nuvio (id Stremio): addon + plugin, più il nome del
 // titolo per i file. Usata dai due addon, download e streaming.
-async function gatherForAddon(type, id) {
-  const addonList = config.activeAddons();
-  const pluginsOn = !!plugins.settings().enabled;
+async function gatherForAddon(type, id, { download = false } = {}) {
+  const { addonList, pluginsOn, pluginOnly } = download
+    ? downloadSourceQuery()
+    : { addonList: config.activeAddons(), pluginsOn: !!plugins.settings().enabled, pluginOnly: null };
   if (!addonList.length && !pluginsOn) return { downloadable: [], label: id };
 
   const { imdbId, season, episode } = parseStremioId(id);
@@ -650,7 +707,7 @@ async function gatherForAddon(type, id) {
     addons.getStreamsForAllAddons(addonList, type, id),
     pluginsOn
       ? infoPromise.then(info => (info && info.tmdbId
-        ? plugins.getStreams(info.tmdbId, type === 'series' ? 'tv' : 'movie', season ? Number(season) : null, episode ? Number(episode) : null, cfg.addonTimeoutMs, { animation: info.animation })
+        ? plugins.getStreams(info.tmdbId, type === 'series' ? 'tv' : 'movie', season ? Number(season) : null, episode ? Number(episode) : null, cfg.addonTimeoutMs, { animation: info.animation, only: pluginOnly })
         : { streams: [] }))
       : { streams: [] }
   ]);
@@ -670,7 +727,7 @@ app.get('/stream/:type/:id.json', addonCors, asyncRoute(async (req, res) => {
   const { type, id } = req.params;
   if (type !== 'movie' && type !== 'series') return res.json({ streams: [] });
 
-  const { downloadable, label } = await gatherForAddon(type, id);
+  const { downloadable, label } = await gatherForAddon(type, id, { download: true });
   if (!downloadable.length) return res.json({ streams: [] });
 
   const entries = await rankDownloadable(downloadable);
