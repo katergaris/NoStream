@@ -48,6 +48,21 @@ function listAddons() {
   return load().addons;
 }
 
+// Addon da interrogare: quelli non disattivati dall'utente. Un addon disattivato resta in
+// config.json (disabled: true) e si riattiva con un tocco, senza doverlo riaggiungere.
+function activeAddons() {
+  return load().addons.filter(a => !a.disabled);
+}
+
+function setAddonEnabled(id, enabled) {
+  const cfg = load();
+  const addon = cfg.addons.find(a => a.id === id);
+  if (!addon) return null;
+  if (enabled) delete addon.disabled; else addon.disabled = true;
+  save(cfg);
+  return addon;
+}
+
 function addAddon({ name, manifestUrl }) {
   const cfg = load();
   const addon = {
@@ -105,4 +120,4 @@ function localUrl(url) {
   return url;
 }
 
-module.exports = { get, save, localUrl, listAddons, addAddon, removeAddon, updateSettings, CONFIG_PATH };
+module.exports = { get, save, localUrl, listAddons, activeAddons, setAddonEnabled, addAddon, removeAddon, updateSettings, CONFIG_PATH };

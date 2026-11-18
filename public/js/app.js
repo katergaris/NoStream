@@ -909,7 +909,7 @@ async function openSourceSheet({ season, episode, epName }) {
     s.appendChild(el('div', { class: 'kicker' }, isTv ? `S${season} · E${pad(episode)}` : item.title));
     s.appendChild(el('h3', {}, isTv ? (epName || t('detail.episode', { n: episode })) : t('sheet.chooseSource')));
     s.appendChild(el('div', { class: 'sheet-body' }, el('div', { class: 'empty' },
-      t('sheet.searching', { n: (state.addons && state.addons.length) || '…' }))));
+      t('sheet.searching', { n: (state.addons && state.addons.filter(a => !a.disabled).length) || '…' }))));
   });
   const body = $('.sheet-body', sheet);
   const cacheKey = `${item.tmdbId}:${season ?? ''}:${episode ?? ''}`;
@@ -1663,7 +1663,7 @@ function renderSettings(page) {
   view.appendChild(el('div', { class: 'meta', style: 'margin:6px 4px 0' }, t('settings.prefsHint')));
 
   view.appendChild(el('div', { class: 'sec' }, t('settings.sources')));
-  const n = state.addons ? state.addons.length : null;
+  const n = state.addons ? state.addons.filter(a => !a.disabled).length : null;
   view.appendChild(el('div', { class: 'group' }, [
     linkRow(t('settings.addons'), n === null ? '' : el('span', { class: n ? 'chip ok' : 'chip warn' }, t('settings.addonsCount', { n })), '#impostazioni/addon'),
     linkRow(t('settings.nuvioAccount'), state.nuvio && state.nuvio.connected
@@ -1734,7 +1734,18 @@ async function fillAddonList(list, after) {
   }
   for (const a of addons) {
     const status = el('span', { class: 'chip' }, t('addons.checking'));
-    list.appendChild(el('div', { class: 'set' }, [
+    const toggle = el('input', { type: 'checkbox', role: 'switch', 'aria-label': t('addons.toggle', { name: a.name }), onchange: async e => {
+      const enabled = e.target.checked;
+      try {
+        await api(`/addons/${a.id}`, { method: 'POST', body: JSON.stringify({ enabled }) });
+        a.disabled = !enabled;
+        row.classList.toggle('off', !enabled);
+        state.streamCache.clear();
+        toast(t(enabled ? 'addons.enabled' : 'addons.disabled', { name: a.name }));
+      } catch (err) { e.target.checked = !enabled; toast(err.message, true); }
+    } });
+    toggle.checked = !a.disabled;
+    const row = el('div', { class: 'set' + (a.disabled ? ' off' : '') }, [
       el('span', { style: 'min-width:0' }, [a.name, a.origin === 'nuvio' ? el('span', { class: 'chip acc', style: 'margin-left:6px' }, t('addons.fromNuvio')) : null,
         el('small', { style: 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, a.origin === 'nuvio' ? hostOf(a.manifestUrl) : a.manifestUrl)]),
       el('span', { class: 'v', style: 'flex:none' }, [
@@ -1746,9 +1757,11 @@ async function fillAddonList(list, after) {
           state.streamCache.clear();
           await loadAddons();
           after();
-        } }, icon('trash'))
+        } }, icon('trash')),
+        el('span', { class: 'switch' }, [toggle, el('span')])
       ])
-    ]));
+    ]);
+    list.appendChild(row);
     api(`/addons/${a.id}/check`).then(r => {
       const sec = new Intl.NumberFormat(I18N.lang, { maximumFractionDigits: 1 }).format(r.ms / 1000);
       status.className = 'chip ' + (r.ok ? (r.ms > 5000 ? 'warn' : 'ok') : 'err');

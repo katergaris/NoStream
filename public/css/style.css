@@ -226,6 +226,7 @@ body.has-selbar main { padding-bottom: calc(var(--tabbar-h) + var(--safe-b) + 88
 .cb.on { background: var(--accent); border-color: var(--accent); }
 .cb.on svg.i { opacity: 1; }
 .row.disabled { opacity: .5; }
+.set.off > span:first-child { opacity: .5; }
 
 /* Barra della selezione multipla */
 .selbar {

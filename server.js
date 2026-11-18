@@ -99,7 +99,7 @@ app.get('/api/streams', asyncRoute(async (req, res) => {
   }
 
   const stremioId = addons.buildStremioId(imdbId, stremioType, season, episode);
-  const addonList = config.listAddons();
+  const addonList = config.activeAddons();
   const pluginsOn = !!plugins.settings().enabled;
   if (addonList.length === 0 && !pluginsOn) {
     return res.status(400).json({ error: req.t('srv.noAddons') });
@@ -195,6 +195,15 @@ app.get('/api/addons/:id/check', asyncRoute(async (req, res) => {
     res.json({ ok: false, error: e.name === 'TimeoutError' ? 'timeout' : e.message });
   }
 }));
+
+// Attiva o disattiva un addon senza cancellarlo: { enabled: true|false }.
+app.post('/api/addons/:id', (req, res) => {
+  const { enabled } = req.body || {};
+  if (typeof enabled !== 'boolean') return res.status(400).json({ error: req.t('srv.missingParams') });
+  const addon = config.setAddonEnabled(req.params.id, enabled);
+  if (!addon) return res.status(404).json({ error: req.t('srv.addonNotFound') });
+  res.json({ addon: addon.origin === 'nuvio' ? { ...addon, manifestUrl: (() => { try { return `${new URL(addon.manifestUrl).origin}/…`; } catch { return '…'; } })() } : addon });
+});
 
 app.delete('/api/addons/:id', (req, res) => {
   // Gli addon presi da Nuvio non si cancellano (tornerebbero alla prossima lettura):
@@ -630,7 +639,7 @@ app.get('/manifest.json', addonCors, (req, res) => {
 // Fonti per un titolo richiesto da Nuvio (id Stremio): addon + plugin, più il nome del
 // titolo per i file. Usata dai due addon, download e streaming.
 async function gatherForAddon(type, id) {
-  const addonList = config.listAddons();
+  const addonList = config.activeAddons();
   const pluginsOn = !!plugins.settings().enabled;
   if (!addonList.length && !pluginsOn) return { downloadable: [], label: id };
 

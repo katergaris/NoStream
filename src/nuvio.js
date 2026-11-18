@@ -176,9 +176,11 @@ function sync() {
     const excluded = new Set((cfg.nuvio && cfg.nuvio.excluded) || []);
     const manual = cfg.addons.filter(a => a.origin !== 'nuvio');
     const manualUrls = new Set(manual.map(a => a.manifestUrl));
+    // Gli addon di Nuvio disattivati a mano in NoStream restano disattivati dopo la lettura.
+    const disabledIds = new Set(cfg.addons.filter(a => a.origin === 'nuvio' && a.disabled).map(a => a.id));
     const fromNuvio = report
       .filter(r => r.status === 'usable' && !excluded.has(r.id) && !manualUrls.has(r.url))
-      .map(r => ({ id: r.id, name: r.name || new URL(r.url).hostname, manifestUrl: r.url, origin: 'nuvio' }));
+      .map(r => ({ id: r.id, name: r.name || new URL(r.url).hostname, manifestUrl: r.url, origin: 'nuvio', ...(disabledIds.has(r.id) ? { disabled: true } : {}) }));
     cfg.addons = [...manual, ...fromNuvio];
     cfg.nuvio = {
       ...cfg.nuvio,
